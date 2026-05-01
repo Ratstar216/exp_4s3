@@ -93,6 +93,12 @@ def parse_args() -> argparse.Namespace:
         help="Minimum pixel movement before adding a new trajectory point.",
     )
     parser.add_argument(
+        "--trajectory-thickness",
+        type=int,
+        default=16,
+        help="Trajectory line thickness in pixels.",
+    )
+    parser.add_argument(
         "--print-every",
         type=float,
         default=0.25,
@@ -132,6 +138,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--trajectory-length must be at least 2")
     if args.min_trajectory_distance < 0:
         parser.error("--min-trajectory-distance must be 0 or greater")
+    if args.trajectory_thickness < 1:
+        parser.error("--trajectory-thickness must be at least 1")
     return args
 
 
@@ -202,6 +210,7 @@ def should_add_trajectory_point(
 
 def update_trajectory(
     trajectories: dict[int, list[tuple[int, int]]],
+    paint_segments: list[tuple[int, tuple[int, int], tuple[int, int]]],
     marker_id: int,
     point: tuple[int, int],
     max_length: int,
@@ -209,23 +218,30 @@ def update_trajectory(
 ) -> None:
     trajectory = trajectories.setdefault(marker_id, [])
     if should_add_trajectory_point(trajectory, point, min_distance):
+        if trajectory:
+            paint_segments.append((marker_id, trajectory[-1], point))
         trajectory.append(point)
         if len(trajectory) > max_length:
             del trajectory[: len(trajectory) - max_length]
+        total_segments = sum(max(0, len(points) - 1) for points in trajectories.values())
+        if len(paint_segments) > total_segments:
+            del paint_segments[: len(paint_segments) - total_segments]
 
 
 def draw_trajectories(
     frame: np.ndarray,
+    paint_segments: list[tuple[int, tuple[int, int], tuple[int, int]]],
     trajectories: dict[int, list[tuple[int, int]]],
+    thickness: int,
 ) -> None:
-    for marker_id, trajectory in trajectories.items():
-        if len(trajectory) < 2:
-            continue
+    for marker_id, start, end in paint_segments:
+        cv2.line(frame, start, end, marker_color(marker_id), thickness, cv2.LINE_AA)
 
+    for marker_id, trajectory in trajectories.items():
+        if not trajectory:
+            continue
         color = marker_color(marker_id)
-        points = np.array(trajectory, dtype=np.int32).reshape((-1, 1, 2))
-        cv2.polylines(frame, [points], isClosed=False, color=color, thickness=2)
-        cv2.circle(frame, trajectory[-1], 6, color, -1)
+        cv2.circle(frame, trajectory[-1], max(6, thickness // 2), color, -1)
 
 
 def draw_marker_details(
@@ -314,6 +330,7 @@ def track_markers(args: argparse.Namespace) -> None:
     capture = open_camera(args.camera_index, args.width, args.height)
     marker_ids = target_ids(args)
     trajectories: dict[int, list[tuple[int, int]]] = {}
+    paint_segments: list[tuple[int, tuple[int, int], tuple[int, int]]] = []
 
     last_frame_time = time.monotonic()
     last_print_time = 0.0
@@ -349,6 +366,7 @@ def track_markers(args: argparse.Namespace) -> None:
                     heading = marker_heading_degrees(marker_corners)
                     update_trajectory(
                         trajectories,
+                        paint_segments,
                         marker_id,
                         (center_x, center_y),
                         args.trajectory_length,
@@ -371,7 +389,12 @@ def track_markers(args: argparse.Namespace) -> None:
             if args.headless:
                 continue
 
-            draw_trajectories(frame, trajectories)
+            draw_trajectories(
+                frame,
+                paint_segments,
+                trajectories,
+                args.trajectory_thickness,
+            )
             for marker_corners, marker_id in visible_markers:
                 draw_marker_details(frame, marker_corners, marker_id, fps)
             cv2.imshow(WINDOW_NAME, frame)
@@ -380,6 +403,7 @@ def track_markers(args: argparse.Namespace) -> None:
                 break
             if key == ord("c"):
                 trajectories.clear()
+                paint_segments.clear()
                 print("cleared trajectories", flush=True)
     finally:
         capture.release()
