@@ -44,7 +44,8 @@ id=0 x=645 y=318 heading=2.4 path=42 | id=1 x=220 y=510 heading=-88.1 path=39
 ```
 
 Press `q` or `Esc` in the preview window to quit. Press `c` to clear all
-trajectories while tracking continues.
+trajectories while tracking continues. When tracking stops, including by
+`Ctrl+C`, the latest image with trajectories is saved to `trajectories.png`.
 
 Useful options:
 
@@ -54,6 +55,7 @@ Useful options:
 - `--trajectory-length 1200`: keep more path history per robot.
 - `--min-trajectory-distance 5`: add path points only after larger pixel moves.
 - `--trajectory-thickness 24`: make territory paths broader.
+- `--trajectory-output result.png`: choose where to save the final trajectory image.
 - `--headless`: print detections without opening a preview window.
 
 For an overhead camera, `x` and `y` are pixel coordinates in the camera image.

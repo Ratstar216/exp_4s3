@@ -133,6 +133,12 @@ def parse_args() -> argparse.Namespace:
         default=Path("marker.png"),
         help="Output path for --generate-marker.",
     )
+    parser.add_argument(
+        "--trajectory-output",
+        type=Path,
+        default=Path("trajectories.png"),
+        help="Image path written when tracking stops.",
+    )
     args = parser.parse_args()
     if args.trajectory_length < 2:
         parser.error("--trajectory-length must be at least 2")
@@ -320,6 +326,17 @@ def open_camera(camera_index: int, width: int, height: int) -> cv2.VideoCapture:
     return capture
 
 
+def save_trajectory_image(path: Path, frame: np.ndarray | None) -> None:
+    if frame is None:
+        print("No trajectory image was saved because no frame was captured.")
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(path), frame):
+        raise RuntimeError(f"Failed to write trajectory image: {path}")
+    print(f"Saved trajectory image to {path}")
+
+
 def should_use_marker(marker_id: int, marker_ids: set[int] | None) -> bool:
     return marker_ids is None or marker_id in marker_ids
 
@@ -334,6 +351,7 @@ def track_markers(args: argparse.Namespace) -> None:
 
     last_frame_time = time.monotonic()
     last_print_time = 0.0
+    last_visualization: np.ndarray | None = None
     fps = 0.0
 
     if args.headless:
@@ -376,8 +394,7 @@ def track_markers(args: argparse.Namespace) -> None:
                         f"id={marker_id} x={center_x} y={center_y} "
                         f"heading={heading:.1f} path={len(trajectories[marker_id])}"
                     )
-                    if not args.headless:
-                        visible_markers.append((marker_corners, marker_id))
+                    visible_markers.append((marker_corners, marker_id))
 
             if now - last_print_time >= args.print_every:
                 if detections:
@@ -385,9 +402,6 @@ def track_markers(args: argparse.Namespace) -> None:
                 else:
                     print("no marker", flush=True)
                 last_print_time = now
-
-            if args.headless:
-                continue
 
             draw_trajectories(
                 frame,
@@ -397,6 +411,11 @@ def track_markers(args: argparse.Namespace) -> None:
             )
             for marker_corners, marker_id in visible_markers:
                 draw_marker_details(frame, marker_corners, marker_id, fps)
+            last_visualization = frame.copy()
+
+            if args.headless:
+                continue
+
             cv2.imshow(WINDOW_NAME, frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q") or key == 27:
@@ -405,7 +424,10 @@ def track_markers(args: argparse.Namespace) -> None:
                 trajectories.clear()
                 paint_segments.clear()
                 print("cleared trajectories", flush=True)
+    except KeyboardInterrupt:
+        print("\nInterrupted by Ctrl+C.")
     finally:
+        save_trajectory_image(args.trajectory_output, last_visualization)
         capture.release()
         if not args.headless:
             cv2.destroyAllWindows()
