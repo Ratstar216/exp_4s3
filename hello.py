@@ -10,6 +10,14 @@ import numpy as np
 
 
 WINDOW_NAME = "AR Marker Tracker"
+DEFAULT_MARKER_COLORS = [
+    (0, 255, 0),
+    (255, 0, 0),
+    (0, 180, 255),
+    (255, 0, 255),
+    (255, 255, 0),
+    (0, 0, 255),
+]
 
 ARUCO_DICTIONARIES = {
     "4x4_50": cv2.aruco.DICT_4X4_50,
@@ -63,7 +71,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--target-id",
         type=int,
-        help="Only report and draw this marker ID.",
+        action="append",
+        help="Only report and draw this marker ID. Can be passed more than once.",
+    )
+    parser.add_argument(
+        "--robot-ids",
+        type=int,
+        nargs="+",
+        help="Marker IDs for the robots to track, for example: --robot-ids 0 1.",
+    )
+    parser.add_argument(
+        "--trajectory-length",
+        type=int,
+        default=600,
+        help="Maximum number of center points kept per marker trajectory.",
+    )
+    parser.add_argument(
+        "--min-trajectory-distance",
+        type=float,
+        default=2.0,
+        help="Minimum pixel movement before adding a new trajectory point.",
     )
     parser.add_argument(
         "--print-every",
@@ -100,7 +127,12 @@ def parse_args() -> argparse.Namespace:
         default=Path("marker.png"),
         help="Output path for --generate-marker.",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.trajectory_length < 2:
+        parser.error("--trajectory-length must be at least 2")
+    if args.min_trajectory_distance < 0:
+        parser.error("--min-trajectory-distance must be 0 or greater")
+    return args
 
 
 def get_aruco_dictionary(name: str) -> cv2.aruco.Dictionary:
@@ -143,6 +175,59 @@ def marker_heading_degrees(corners: np.ndarray) -> float:
     return math.degrees(math.atan2(float(dy), float(dx)))
 
 
+def marker_color(marker_id: int) -> tuple[int, int, int]:
+    return DEFAULT_MARKER_COLORS[marker_id % len(DEFAULT_MARKER_COLORS)]
+
+
+def target_ids(args: argparse.Namespace) -> set[int] | None:
+    ids = set(args.target_id or [])
+    if args.robot_ids:
+        ids.update(args.robot_ids)
+    return ids or None
+
+
+def should_add_trajectory_point(
+    trajectory: list[tuple[int, int]],
+    point: tuple[int, int],
+    min_distance: float,
+) -> bool:
+    if not trajectory:
+        return True
+
+    last_x, last_y = trajectory[-1]
+    dx = point[0] - last_x
+    dy = point[1] - last_y
+    return math.hypot(dx, dy) >= min_distance
+
+
+def update_trajectory(
+    trajectories: dict[int, list[tuple[int, int]]],
+    marker_id: int,
+    point: tuple[int, int],
+    max_length: int,
+    min_distance: float,
+) -> None:
+    trajectory = trajectories.setdefault(marker_id, [])
+    if should_add_trajectory_point(trajectory, point, min_distance):
+        trajectory.append(point)
+        if len(trajectory) > max_length:
+            del trajectory[: len(trajectory) - max_length]
+
+
+def draw_trajectories(
+    frame: np.ndarray,
+    trajectories: dict[int, list[tuple[int, int]]],
+) -> None:
+    for marker_id, trajectory in trajectories.items():
+        if len(trajectory) < 2:
+            continue
+
+        color = marker_color(marker_id)
+        points = np.array(trajectory, dtype=np.int32).reshape((-1, 1, 2))
+        cv2.polylines(frame, [points], isClosed=False, color=color, thickness=2)
+        cv2.circle(frame, trajectory[-1], 6, color, -1)
+
+
 def draw_marker_details(
     frame: np.ndarray,
     corners: np.ndarray,
@@ -153,14 +238,15 @@ def draw_marker_details(
     heading = marker_heading_degrees(corners)
     points = corners.reshape(4, 2).astype(int)
     top_left, top_right, bottom_right, bottom_left = points
+    color = marker_color(marker_id)
 
-    cv2.polylines(frame, [points], isClosed=True, color=(0, 255, 0), thickness=2)
-    cv2.circle(frame, (center_x, center_y), 5, (0, 0, 255), -1)
+    cv2.polylines(frame, [points], isClosed=True, color=color, thickness=2)
+    cv2.circle(frame, (center_x, center_y), 5, color, -1)
     cv2.arrowedLine(
         frame,
         tuple(top_left),
         tuple(top_right),
-        (255, 0, 0),
+        color,
         2,
         tipLength=0.25,
     )
@@ -173,7 +259,7 @@ def draw_marker_details(
         text_origin,
         cv2.FONT_HERSHEY_SIMPLEX,
         0.55,
-        (0, 255, 0),
+        color,
         2,
         cv2.LINE_AA,
     )
@@ -218,20 +304,25 @@ def open_camera(camera_index: int, width: int, height: int) -> cv2.VideoCapture:
     return capture
 
 
-def should_use_marker(marker_id: int, target_id: int | None) -> bool:
-    return target_id is None or marker_id == target_id
+def should_use_marker(marker_id: int, marker_ids: set[int] | None) -> bool:
+    return marker_ids is None or marker_id in marker_ids
 
 
 def track_markers(args: argparse.Namespace) -> None:
     aruco_dictionary = get_aruco_dictionary(args.dictionary)
     detector = create_detector(aruco_dictionary)
     capture = open_camera(args.camera_index, args.width, args.height)
+    marker_ids = target_ids(args)
+    trajectories: dict[int, list[tuple[int, int]]] = {}
 
     last_frame_time = time.monotonic()
     last_print_time = 0.0
     fps = 0.0
 
-    print("Tracking started. Press q in the preview window to quit.")
+    if args.headless:
+        print("Tracking started. Press Ctrl+C to quit.")
+    else:
+        print("Tracking started. Press q to quit or c to clear trajectories.")
     try:
         while True:
             ok, frame = capture.read()
@@ -246,20 +337,29 @@ def track_markers(args: argparse.Namespace) -> None:
 
             corners, ids = detect_markers(frame, aruco_dictionary, detector)
             detections: list[str] = []
+            visible_markers: list[tuple[np.ndarray, int]] = []
 
             if ids is not None:
                 for marker_corners, marker_id_array in zip(corners, ids):
                     marker_id = int(marker_id_array[0])
-                    if not should_use_marker(marker_id, args.target_id):
+                    if not should_use_marker(marker_id, marker_ids):
                         continue
 
                     center_x, center_y = marker_center(marker_corners)
                     heading = marker_heading_degrees(marker_corners)
+                    update_trajectory(
+                        trajectories,
+                        marker_id,
+                        (center_x, center_y),
+                        args.trajectory_length,
+                        args.min_trajectory_distance,
+                    )
                     detections.append(
-                        f"id={marker_id} x={center_x} y={center_y} heading={heading:.1f}"
+                        f"id={marker_id} x={center_x} y={center_y} "
+                        f"heading={heading:.1f} path={len(trajectories[marker_id])}"
                     )
                     if not args.headless:
-                        draw_marker_details(frame, marker_corners, marker_id, fps)
+                        visible_markers.append((marker_corners, marker_id))
 
             if now - last_print_time >= args.print_every:
                 if detections:
@@ -271,10 +371,16 @@ def track_markers(args: argparse.Namespace) -> None:
             if args.headless:
                 continue
 
+            draw_trajectories(frame, trajectories)
+            for marker_corners, marker_id in visible_markers:
+                draw_marker_details(frame, marker_corners, marker_id, fps)
             cv2.imshow(WINDOW_NAME, frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q") or key == 27:
                 break
+            if key == ord("c"):
+                trajectories.clear()
+                print("cleared trajectories", flush=True)
     finally:
         capture.release()
         if not args.headless:
