@@ -236,8 +236,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--item-radius must be at least 1")
     if args.item_pickup_radius < 1:
         parser.error("--item-pickup-radius must be at least 1")
-    if args.mushroom_duration < 0:
-        parser.error("--mushroom-duration must be 0 or greater")
+    if args.mushroom_duration <= 0:
+        parser.error("--mushroom-duration must be greater than 0")
     if args.mushroom_size_multiplier < 1:
         parser.error("--mushroom-size-multiplier must be at least 1")
     return args
