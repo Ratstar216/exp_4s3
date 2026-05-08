@@ -37,16 +37,22 @@ The preview window draws each detected marker border, center point, ID, heading,
 frame rate, and broad colored trajectory. Trajectories are drawn in movement
 order, so a robot can overwrite territory by driving over the opponent's older
 trajectory. The preview also displays each player's current territory size in
-painted pixels. The console prints image-space coordinates, stored trajectory
-points, and territory scores:
+painted pixels, the remaining game time, and who is currently leading. Support
+items are shown on the field and a final score panel appears when the timer ends.
+The console prints image-space coordinates, stored trajectory points, and
+territory scores:
 
 ```text
 id=0 x=645 y=318 heading=2.4 path=42 | id=1 x=220 y=510 heading=-88.1 path=39 | territory: id=0 8200px | id=1 7600px
 ```
 
 Press `q` or `Esc` in the preview window to quit. Press `c` to clear all
-trajectories while tracking continues. When tracking stops, including by
-`Ctrl+C`, the latest image with trajectories is saved to `trajectories.png`.
+trajectories while tracking continues. Press `r` to reset the game state and
+timer. Press `k` to start camera calibration, then click four field corners.
+Press `p` to start projector calibration, then click four projection corners.
+Left click on the field to place a mushroom support item and right click to
+remove the nearest item. When tracking stops, including by `Ctrl+C`, the latest
+image with trajectories is saved to `trajectories.png`.
 
 Useful options:
 
@@ -60,6 +66,11 @@ Useful options:
 - `--trajectory-thickness 24`: make territory paths broader.
 - `--trajectory-output result.png`: choose where to save the final trajectory image.
 - `--headless`: print detections without opening a preview window.
+- `--game-duration 180`: set the match time in seconds (0 disables the timer).
+- `--item-radius 28`: adjust the size of support item markers.
+- `--item-pickup-radius 40`: set the pickup range for support items.
+- `--mushroom-duration 8`: set how long the size boost lasts.
+- `--mushroom-size-multiplier 1.6`: set the size multiplier during a boost.
 
 ## iPhone Camera
 
