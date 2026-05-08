@@ -50,7 +50,9 @@ trajectories while tracking continues. When tracking stops, including by
 
 Useful options:
 
+- `--list-cameras`: probe local camera indexes and exit.
 - `--camera-index 1`: use another camera.
+- `--camera-source <url-or-file>`: use an IP/RTSP/HTTP camera URL or video file.
 - `--width 1920 --height 1080`: request a different capture resolution.
 - `--dictionary 5x5_100`: use another ArUco dictionary.
 - `--trajectory-length 1200`: keep more path history per robot.
@@ -58,6 +60,28 @@ Useful options:
 - `--trajectory-thickness 24`: make territory paths broader.
 - `--trajectory-output result.png`: choose where to save the final trajectory image.
 - `--headless`: print detections without opening a preview window.
+
+## iPhone Camera
+
+On macOS, iPhone Continuity Camera usually appears to OpenCV as one of the
+numeric camera indexes. The index can change, so probe it before tracking:
+
+```sh
+uv run python hello.py --list-cameras
+```
+
+Then run tracking with the index that shows the iPhone view:
+
+```sh
+uv run python hello.py --camera-index 1 --robot-ids 0 1 --trajectory-thickness 96
+```
+
+If Continuity Camera does not appear reliably, use an iPhone camera app that
+publishes an HTTP, RTSP, or similar stream, then pass that stream URL:
+
+```sh
+uv run python hello.py --camera-source http://IPHONE_ADDRESS:PORT/video --robot-ids 0 1 --trajectory-thickness 96
+```
 
 For an overhead camera, `x`, `y`, and territory sizes are measured in camera
 image pixels. Calibrate the camera and field later if you need real-world field

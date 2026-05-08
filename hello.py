@@ -52,6 +52,24 @@ def parse_args() -> argparse.Namespace:
         help="Camera index passed to OpenCV VideoCapture.",
     )
     parser.add_argument(
+        "--camera-source",
+        help=(
+            "Camera source passed to OpenCV VideoCapture. Use this for an IP/RTSP/"
+            "HTTP camera URL or a video file. Numeric values are treated as camera indexes."
+        ),
+    )
+    parser.add_argument(
+        "--list-cameras",
+        action="store_true",
+        help="Probe local OpenCV camera indexes and exit.",
+    )
+    parser.add_argument(
+        "--camera-probe-limit",
+        type=int,
+        default=10,
+        help="Number of camera indexes to check with --list-cameras.",
+    )
+    parser.add_argument(
         "--width",
         type=int,
         default=1280,
@@ -147,6 +165,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--min-trajectory-distance must be 0 or greater")
     if args.trajectory_thickness < 1:
         parser.error("--trajectory-thickness must be at least 1")
+    if args.camera_probe_limit < 1:
+        parser.error("--camera-probe-limit must be at least 1")
     return args
 
 
@@ -385,13 +405,42 @@ def generate_marker(args: argparse.Namespace) -> None:
     print(f"Wrote marker {args.generate_marker} to {args.output}")
 
 
-def open_camera(camera_index: int, width: int, height: int) -> cv2.VideoCapture:
-    capture = cv2.VideoCapture(camera_index)
+def parse_camera_source(camera_source: str | None, camera_index: int) -> int | str:
+    if camera_source is None:
+        return camera_index
+    try:
+        return int(camera_source)
+    except ValueError:
+        return camera_source
+
+
+def list_cameras(probe_limit: int, width: int, height: int) -> None:
+    found_any = False
+    for camera_index in range(probe_limit):
+        capture = cv2.VideoCapture(camera_index)
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        ok, frame = capture.read() if capture.isOpened() else (False, None)
+        capture.release()
+        if not ok or frame is None:
+            continue
+
+        found_any = True
+        actual_width = int(frame.shape[1])
+        actual_height = int(frame.shape[0])
+        print(f"camera-index {camera_index}: opened {actual_width}x{actual_height}")
+
+    if not found_any:
+        print(f"No cameras opened in indexes 0-{probe_limit - 1}.")
+
+
+def open_camera(camera_source: int | str, width: int, height: int) -> cv2.VideoCapture:
+    capture = cv2.VideoCapture(camera_source)
     capture.set(cv2.CAP_PROP_FRAME_WIDTH, width)
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     if not capture.isOpened():
         capture.release()
-        raise RuntimeError(f"Could not open camera index {camera_index}")
+        raise RuntimeError(f"Could not open camera source {camera_source!r}")
     return capture
 
 
@@ -413,7 +462,8 @@ def should_use_marker(marker_id: int, marker_ids: set[int] | None) -> bool:
 def track_markers(args: argparse.Namespace) -> None:
     aruco_dictionary = get_aruco_dictionary(args.dictionary)
     detector = create_detector(aruco_dictionary)
-    capture = open_camera(args.camera_index, args.width, args.height)
+    camera_source = parse_camera_source(args.camera_source, args.camera_index)
+    capture = open_camera(camera_source, args.width, args.height)
     marker_ids = target_ids(args)
     trajectories: dict[int, list[tuple[int, int]]] = {}
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int]]] = []
@@ -512,6 +562,9 @@ def track_markers(args: argparse.Namespace) -> None:
 
 def main() -> None:
     args = parse_args()
+    if args.list_cameras:
+        list_cameras(args.camera_probe_limit, args.width, args.height)
+        return
     if args.generate_marker is not None:
         generate_marker(args)
         return
