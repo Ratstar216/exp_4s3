@@ -18,6 +18,7 @@ DEFAULT_MARKER_COLORS = [
     (255, 255, 0),
     (0, 0, 255),
 ]
+UNOWNED_TERRITORY = -1
 
 ARUCO_DICTIONARIES = {
     "4x4_50": cv2.aruco.DICT_4X4_50,
@@ -217,21 +218,61 @@ def should_add_trajectory_point(
 def update_trajectory(
     trajectories: dict[int, list[tuple[int, int]]],
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int]]],
+    territory_owner: np.ndarray,
     marker_id: int,
     point: tuple[int, int],
     max_length: int,
     min_distance: float,
+    thickness: int,
 ) -> None:
     trajectory = trajectories.setdefault(marker_id, [])
     if should_add_trajectory_point(trajectory, point, min_distance):
         if trajectory:
-            paint_segments.append((marker_id, trajectory[-1], point))
+            start = trajectory[-1]
+            paint_segments.append((marker_id, start, point))
+            paint_territory(territory_owner, marker_id, start, point, thickness)
         trajectory.append(point)
         if len(trajectory) > max_length:
             del trajectory[: len(trajectory) - max_length]
         total_segments = sum(max(0, len(points) - 1) for points in trajectories.values())
         if len(paint_segments) > total_segments:
             del paint_segments[: len(paint_segments) - total_segments]
+
+
+def paint_territory(
+    territory_owner: np.ndarray,
+    marker_id: int,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    thickness: int,
+) -> None:
+    stroke = np.zeros(territory_owner.shape, dtype=np.uint8)
+    cv2.line(stroke, start, end, 255, thickness, cv2.LINE_AA)
+    territory_owner[stroke > 0] = marker_id
+
+
+def territory_scores(
+    territory_owner: np.ndarray,
+    marker_ids: set[int] | None,
+) -> dict[int, int]:
+    owned = territory_owner[territory_owner != UNOWNED_TERRITORY]
+    if owned.size == 0:
+        return {marker_id: 0 for marker_id in sorted(marker_ids or [])}
+
+    ids, counts = np.unique(owned, return_counts=True)
+    scores = {int(marker_id): int(count) for marker_id, count in zip(ids, counts)}
+    if marker_ids is not None:
+        for marker_id in marker_ids:
+            scores.setdefault(marker_id, 0)
+    return dict(sorted(scores.items()))
+
+
+def format_scores(scores: dict[int, int]) -> str:
+    if not scores:
+        return "territory: none"
+    return "territory: " + " | ".join(
+        f"id={marker_id} {score_px}px" for marker_id, score_px in scores.items()
+    )
 
 
 def draw_trajectories(
@@ -248,6 +289,34 @@ def draw_trajectories(
             continue
         color = marker_color(marker_id)
         cv2.circle(frame, trajectory[-1], max(6, thickness // 2), color, -1)
+
+
+def draw_territory_scores(frame: np.ndarray, scores: dict[int, int]) -> None:
+    if not scores:
+        return
+
+    line_height = 30
+    padding = 12
+    panel_width = 260
+    panel_height = padding * 2 + line_height * len(scores)
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (12, 12), (12 + panel_width, 12 + panel_height), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+
+    for index, (marker_id, score_px) in enumerate(scores.items()):
+        y = 12 + padding + 22 + line_height * index
+        color = marker_color(marker_id)
+        cv2.circle(frame, (32, y - 6), 8, color, -1)
+        cv2.putText(
+            frame,
+            f"Player {marker_id}: {score_px} px",
+            (50, y),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            color,
+            2,
+            cv2.LINE_AA,
+        )
 
 
 def draw_marker_details(
@@ -348,6 +417,7 @@ def track_markers(args: argparse.Namespace) -> None:
     marker_ids = target_ids(args)
     trajectories: dict[int, list[tuple[int, int]]] = {}
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int]]] = []
+    territory_owner: np.ndarray | None = None
 
     last_frame_time = time.monotonic()
     last_print_time = 0.0
@@ -363,6 +433,8 @@ def track_markers(args: argparse.Namespace) -> None:
             ok, frame = capture.read()
             if not ok:
                 raise RuntimeError("Failed to read a frame from the camera")
+            if territory_owner is None:
+                territory_owner = np.full(frame.shape[:2], UNOWNED_TERRITORY, dtype=np.int16)
 
             now = time.monotonic()
             elapsed = now - last_frame_time
@@ -385,10 +457,12 @@ def track_markers(args: argparse.Namespace) -> None:
                     update_trajectory(
                         trajectories,
                         paint_segments,
+                        territory_owner,
                         marker_id,
                         (center_x, center_y),
                         args.trajectory_length,
                         args.min_trajectory_distance,
+                        args.trajectory_thickness,
                     )
                     detections.append(
                         f"id={marker_id} x={center_x} y={center_y} "
@@ -396,11 +470,12 @@ def track_markers(args: argparse.Namespace) -> None:
                     )
                     visible_markers.append((marker_corners, marker_id))
 
+            scores = territory_scores(territory_owner, marker_ids)
             if now - last_print_time >= args.print_every:
                 if detections:
-                    print(" | ".join(detections), flush=True)
+                    print(f"{' | '.join(detections)} | {format_scores(scores)}", flush=True)
                 else:
-                    print("no marker", flush=True)
+                    print(f"no marker | {format_scores(scores)}", flush=True)
                 last_print_time = now
 
             draw_trajectories(
@@ -411,6 +486,7 @@ def track_markers(args: argparse.Namespace) -> None:
             )
             for marker_corners, marker_id in visible_markers:
                 draw_marker_details(frame, marker_corners, marker_id, fps)
+            draw_territory_scores(frame, scores)
             last_visualization = frame.copy()
 
             if args.headless:
@@ -423,6 +499,7 @@ def track_markers(args: argparse.Namespace) -> None:
             if key == ord("c"):
                 trajectories.clear()
                 paint_segments.clear()
+                territory_owner.fill(UNOWNED_TERRITORY)
                 print("cleared trajectories", flush=True)
     except KeyboardInterrupt:
         print("\nInterrupted by Ctrl+C.")

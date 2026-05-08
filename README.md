@@ -36,11 +36,12 @@ uv run python hello.py --robot-ids 0 1
 The preview window draws each detected marker border, center point, ID, heading,
 frame rate, and broad colored trajectory. Trajectories are drawn in movement
 order, so a robot can overwrite territory by driving over the opponent's older
-trajectory. The console prints image-space coordinates and the number of stored
-trajectory points:
+trajectory. The preview also displays each player's current territory size in
+painted pixels. The console prints image-space coordinates, stored trajectory
+points, and territory scores:
 
 ```text
-id=0 x=645 y=318 heading=2.4 path=42 | id=1 x=220 y=510 heading=-88.1 path=39
+id=0 x=645 y=318 heading=2.4 path=42 | id=1 x=220 y=510 heading=-88.1 path=39 | territory: id=0 8200px | id=1 7600px
 ```
 
 Press `q` or `Esc` in the preview window to quit. Press `c` to clear all
@@ -58,5 +59,6 @@ Useful options:
 - `--trajectory-output result.png`: choose where to save the final trajectory image.
 - `--headless`: print detections without opening a preview window.
 
-For an overhead camera, `x` and `y` are pixel coordinates in the camera image.
-Calibrate the camera and field later if you need real-world field coordinates.
+For an overhead camera, `x`, `y`, and territory sizes are measured in camera
+image pixels. Calibrate the camera and field later if you need real-world field
+coordinates or square-centimeter territory scoring.
