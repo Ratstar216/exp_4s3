@@ -12,7 +12,7 @@ import numpy as np
 WINDOW_NAME = "AR Marker Tracker"
 DEFAULT_MARKER_COLORS = [
     (0, 255, 0),
-    (255, 0, 0),
+    (255, 255, 0),
     (0, 180, 255),
     (255, 0, 255),
     (255, 255, 0),
