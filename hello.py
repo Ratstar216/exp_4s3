@@ -23,6 +23,10 @@ UNOWNED_TERRITORY = -1
 ITEM_MUSHROOM = "mushroom"
 CALIBRATION_CAMERA = "camera"
 CALIBRATION_PROJECTOR = "projector"
+MIN_TRAJECTORY_THICKNESS = 1
+DEFAULT_OUTLINE_THICKNESS = 2
+DEFAULT_MARKER_RADIUS = 5
+DEFAULT_ARROW_THICKNESS = 2
 
 ARUCO_DICTIONARIES = {
     "4x4_50": cv2.aruco.DICT_4X4_50,
@@ -290,12 +294,12 @@ def marker_color(marker_id: int) -> tuple[int, int, int]:
 def order_quad_points(points: list[tuple[int, int]]) -> list[tuple[int, int]]:
     pts = np.array(points, dtype=np.float32)
     sums = pts.sum(axis=1)
-    diffs = np.diff(pts, axis=1).reshape(-1)
+    point_diffs = np.diff(pts, axis=1).reshape(-1)
     ordered = [
         pts[int(np.argmin(sums))],
-        pts[int(np.argmin(diffs))],
+        pts[int(np.argmin(point_diffs))],
         pts[int(np.argmax(sums))],
-        pts[int(np.argmax(diffs))],
+        pts[int(np.argmax(point_diffs))],
     ]
     return [(int(x), int(y)) for x, y in ordered]
 
@@ -325,9 +329,9 @@ def leader_summary(scores: dict[int, int]) -> str:
         leaders_text = ", ".join(f"Player {marker_id}" for marker_id in leaders)
         return f"Leader: tie ({leaders_text})"
     leader_id = leaders[0]
-    trailing_id = sorted_scores[-1][0] if len(sorted_scores) > 1 else None
-    if trailing_id is not None and trailing_id != leader_id:
-        return f"Leader: Player {leader_id} | Trailing: Player {trailing_id}"
+    lowest_score_id = sorted_scores[-1][0] if len(sorted_scores) > 1 else None
+    if lowest_score_id is not None and lowest_score_id != leader_id:
+        return f"Leader: Player {leader_id} | Trailing: Player {lowest_score_id}"
     return f"Leader: Player {leader_id}"
 
 
@@ -706,7 +710,7 @@ def draw_trajectories(
             start,
             end,
             marker_color(marker_id),
-            max(1, segment_thickness),
+            max(MIN_TRAJECTORY_THICKNESS, segment_thickness),
             cv2.LINE_AA,
         )
 
@@ -758,9 +762,18 @@ def draw_marker_details(
     top_left, top_right, bottom_right, bottom_left = points
     color = marker_color(marker_id)
 
-    outline_thickness = max(2, int(2 * size_multiplier))
-    marker_radius = max(5, int(5 * size_multiplier))
-    arrow_thickness = max(2, int(2 * size_multiplier))
+    outline_thickness = max(
+        DEFAULT_OUTLINE_THICKNESS,
+        int(DEFAULT_OUTLINE_THICKNESS * size_multiplier),
+    )
+    marker_radius = max(
+        DEFAULT_MARKER_RADIUS,
+        int(DEFAULT_MARKER_RADIUS * size_multiplier),
+    )
+    arrow_thickness = max(
+        DEFAULT_ARROW_THICKNESS,
+        int(DEFAULT_ARROW_THICKNESS * size_multiplier),
+    )
     cv2.polylines(frame, [points], isClosed=True, color=color, thickness=outline_thickness)
     cv2.circle(frame, (center_x, center_y), marker_radius, color, -1)
     cv2.arrowedLine(
@@ -961,7 +974,10 @@ def track_markers(args: argparse.Namespace) -> None:
                     heading = marker_heading_degrees(marker_corners)
                     size_multiplier = active_size_multiplier(marker_id, active_buffs, now)
                     if updates_enabled:
-                        thickness = max(1, int(args.trajectory_thickness * size_multiplier))
+                        thickness = max(
+                            MIN_TRAJECTORY_THICKNESS,
+                            int(args.trajectory_thickness * size_multiplier),
+                        )
                         update_trajectory(
                             trajectories,
                             paint_segments,
