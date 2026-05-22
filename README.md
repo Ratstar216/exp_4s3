@@ -10,6 +10,13 @@ Real-time ArUco marker tracking for small robots using a PC camera.
 uv sync
 ```
 
+## Project Page
+
+This repository includes a static project page in `docs/`. To publish it with
+GitHub Pages, open the repository settings on GitHub, choose **Pages**, set the
+source to **Deploy from a branch**, and select the `docs/` folder from the main
+branch.
+
 ## Run the Tracker
 
 ```sh
