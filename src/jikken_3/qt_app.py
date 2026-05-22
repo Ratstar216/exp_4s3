@@ -250,7 +250,6 @@ class TrackerWorker(QThread):
                 controller=self._controller,
                 frame_callback=self._publish_frame,
                 projection_frame_callback=self._publish_projection_frame,
-                render_hud=False,
             )
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -747,8 +746,7 @@ def main(argv: list[str] | None = None) -> int:
         generate_marker(args)
         return 0
 
-    args.headless = True
-    app = QApplication(sys.argv if argv is None else ["qt_app.py", *argv])
+    app = QApplication(sys.argv if argv is None else ["hello.py", *argv])
     window = MainWindow(args)
     window.show()
     return app.exec()

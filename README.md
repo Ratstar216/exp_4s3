@@ -10,16 +10,8 @@ uv sync
 
 ## Run the Tracker
 
-Legacy OpenCV window:
-
 ```sh
 uv run python hello.py --robot-ids 0 1
-```
-
-Qt UI:
-
-```sh
-uv run python qt_app.py --robot-ids 0 1
 ```
 
 ## Generate a Marker
@@ -47,32 +39,14 @@ For two robots, track both marker IDs at the same time:
 uv run python hello.py --robot-ids 0 1
 ```
 
-For the Qt interface, use the same options with `qt_app.py`.
+The Qt control window draws each detected marker border, center point, ID,
+heading, frame rate, and broad colored trajectory. Trajectories are drawn in
+movement order, so a robot can overwrite territory by driving over the
+opponent's older trajectory. Support items are shown on the control and
+spectator views. The spectator window displays each player's share of painted
+territory, the remaining game time, and the winner when the timer ends.
 
-The preview window draws each detected marker border, center point, ID, heading,
-frame rate, and broad colored trajectory. Trajectories are drawn in movement
-order, so a robot can overwrite territory by driving over the opponent's older
-trajectory. The preview also displays each player's current territory size in
-painted pixels, the remaining game time, and who is currently leading. Support
-items are shown on the field and a final score panel appears when the timer ends.
-The console prints image-space coordinates, stored trajectory points, and
-territory scores:
-
-```text
-id=0 x=645 y=318 heading=2.4 path=42 | id=1 x=220 y=510 heading=-88.1 path=39 | territory: id=0 8200px | id=1 7600px
-```
-
-In the legacy OpenCV window, press `q` or `Esc` to quit. Press `c` to clear all
-trajectories while tracking continues. Press `r` to reset the game state and
-timer. Click the on-screen `Mushroom` button to toggle mushroom placement mode.
-While mushroom placement mode is active, left click on the field to place a
-mushroom support item and right click to remove the nearest item. Press `k` to
-start camera calibration, then click four field corners. Press `p` to start
-projector calibration, then click four projection corners. When tracking stops,
-including by `Ctrl+C`, the latest image with trajectories is saved to
-`trajectories.png`.
-
-In the Qt UI, the camera feed is shown inside the main window. Use the right
+The camera feed is shown inside the main window. Use the right
 control panel for mushroom placement, territory clearing, match reset, and
 camera/projector calibration. Two secondary windows open alongside the control
 window: a spectator window with the score bar, timer, and winner display, and a
@@ -96,7 +70,6 @@ Useful options:
 - `--min-trajectory-distance 5`: add path points only after larger pixel moves.
 - `--trajectory-thickness 24`: make territory paths broader.
 - `--trajectory-output result.png`: choose where to save the final trajectory image.
-- `--headless`: print detections without opening a preview window.
 - `--game-duration 180`: set the match time in seconds (0 disables the timer).
 - `--item-radius 28`: adjust the size of support item markers.
 - `--item-pickup-radius 40`: set the pickup range for support items.
