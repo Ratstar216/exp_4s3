@@ -126,3 +126,19 @@ uv run python hello.py --camera-source http://IPHONE_ADDRESS:PORT/video --robot-
 For an overhead camera, `x`, `y`, and territory sizes are measured in camera
 image pixels. Calibrate the camera and field later if you need real-world field
 coordinates or square-centimeter territory scoring.
+
+## Haiku
+
+> カメラ越し　マーカー光る　ロボの道
+
+**読み:** かめらごし　マーカーひかる　ロボのみち
+
+**五・七・五の構成:**
+
+| 句 | 読み | 意味 |
+|---|---|---|
+| カメラ越し（5） | かめらごし | PCカメラのレンズ越しに、見えない世界を見通す |
+| マーカー光る（7） | マーカーひかる | ArUcoマーカーが画像処理によって検出され、輝きを放つ |
+| ロボの道（5） | ロボのみち | ロボットが自らの軌跡＝「道」を描いていく |
+
+**解説:** カメラという"目"を通して初めてロボットの位置と向きが明らかになる。マーカーが「光る」という表現は、検出のアルゴリズムが無機質な映像の中からマーカーを識別・可視化する瞬間を擬人化したもの。そしてロボットが描き続ける軌跡は、領土争いの「道」でもあり、実験の記録でもある。
