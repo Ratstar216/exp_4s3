@@ -13,8 +13,8 @@ import numpy as np
 
 
 DEFAULT_MARKER_COLORS = [
-    (0, 255, 0),
-    (255, 255, 0),
+    (100, 20, 255),    # marker 0: neon pink  RGB(255, 20, 100)
+    (10, 255, 50),     # marker 1: lime green RGB(50, 255, 10)
     (0, 180, 255),
     (255, 0, 255),
     (255, 255, 0),
@@ -26,6 +26,7 @@ TOOL_MUSHROOM = ITEM_MUSHROOM
 CALIBRATION_CAMERA = "camera"
 CALIBRATION_PROJECTOR = "projector"
 MIN_TRAJECTORY_THICKNESS = 1
+MIN_LOOP_GAP = 8  # minimum old segments skipped when checking for self-intersection
 DEFAULT_OUTLINE_THICKNESS = 2
 DEFAULT_MARKER_RADIUS = 5
 DEFAULT_ARROW_THICKNESS = 2
@@ -658,6 +659,81 @@ def should_add_trajectory_point(
     return math.hypot(dx, dy) >= min_distance
 
 
+def _segments_intersect_params(
+    p1: tuple[int, int],
+    p2: tuple[int, int],
+    p3: tuple[int, int],
+    p4: tuple[int, int],
+) -> tuple[float, float] | None:
+    """Return (t, s) if segment p1→p2 and p3→p4 properly intersect, else None."""
+    dx1 = float(p2[0] - p1[0])
+    dy1 = float(p2[1] - p1[1])
+    dx2 = float(p4[0] - p3[0])
+    dy2 = float(p4[1] - p3[1])
+    denom = dx1 * dy2 - dy1 * dx2
+    if abs(denom) < 1e-10:
+        return None
+    dx3 = float(p3[0] - p1[0])
+    dy3 = float(p3[1] - p1[1])
+    t = (dx3 * dy2 - dy3 * dx2) / denom
+    s = (dx3 * dy1 - dy3 * dx1) / denom
+    eps = 1e-9
+    if eps < t < 1.0 - eps and eps < s < 1.0 - eps:
+        return t, s
+    return None
+
+
+def detect_loop(
+    trajectory: list[tuple[int, int]],
+    new_point: tuple[int, int],
+) -> tuple[tuple[float, float], int] | None:
+    """Check if trajectory[-1]→new_point crosses any earlier segment.
+
+    Returns (intersection_xy, loop_start_index) for the smallest loop found,
+    where loop_start_index is i such that trajectory[i]→trajectory[i+1] is crossed.
+    The loop polygon is [intersection, trajectory[i+1], ..., trajectory[-1]].
+    """
+    n = len(trajectory)
+    if n < MIN_LOOP_GAP + 2:
+        return None
+    prev = trajectory[-1]
+    # Iterate from most-recent eligible segment downward to find the smallest loop first.
+    for i in range(n - 1 - MIN_LOOP_GAP, -1, -1):
+        result = _segments_intersect_params(prev, new_point, trajectory[i], trajectory[i + 1])
+        if result is not None:
+            _t, s = result
+            ix = (
+                trajectory[i][0] + s * (trajectory[i + 1][0] - trajectory[i][0]),
+                trajectory[i][1] + s * (trajectory[i + 1][1] - trajectory[i][1]),
+            )
+            return ix, i
+    return None
+
+
+def fill_loop_area(
+    territory_owner: np.ndarray,
+    marker_id: int,
+    intersection: tuple[float, float],
+    trajectory: list[tuple[int, int]],
+    loop_start_index: int,
+    field_mask: np.ndarray | None,
+    filled_loops: list[tuple[int, list[tuple[int, int]]]],
+) -> None:
+    """Fill the interior of a detected loop in territory_owner."""
+    polygon_points = [
+        (int(round(intersection[0])), int(round(intersection[1]))),
+        *trajectory[loop_start_index + 1 :],
+    ]
+    if len(polygon_points) < 3:
+        return
+    fill_mask = np.zeros(territory_owner.shape, dtype=np.uint8)
+    cv2.fillPoly(fill_mask, [np.array(polygon_points, dtype=np.int32)], 255)
+    if field_mask is not None:
+        fill_mask = cv2.bitwise_and(fill_mask, fill_mask, mask=field_mask)
+    territory_owner[fill_mask > 0] = marker_id
+    filled_loops.append((marker_id, polygon_points))
+
+
 def update_trajectory(
     trajectories: dict[int, list[tuple[int, int]]],
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int], int]],
@@ -668,13 +744,22 @@ def update_trajectory(
     min_distance: float,
     thickness: int,
     field_mask: np.ndarray | None,
+    filled_loops: list[tuple[int, list[tuple[int, int]]]] | None = None,
 ) -> None:
     trajectory = trajectories.setdefault(marker_id, [])
     if should_add_trajectory_point(trajectory, point, min_distance):
         if trajectory:
             start = trajectory[-1]
+            loop = detect_loop(trajectory, point)
             paint_segments.append((marker_id, start, point, thickness))
             paint_territory(territory_owner, marker_id, start, point, thickness, field_mask)
+            if loop is not None and filled_loops is not None:
+                intersection, loop_start_index = loop
+                fill_loop_area(
+                    territory_owner, marker_id, intersection,
+                    trajectory, loop_start_index, field_mask,
+                    filled_loops,
+                )
         trajectory.append(point)
         if len(trajectory) > max_length:
             del trajectory[: len(trajectory) - max_length]
@@ -736,7 +821,11 @@ def draw_trajectories(
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int], int]],
     trajectories: dict[int, list[tuple[int, int]]],
     thickness: int,
+    filled_loops: list[tuple[int, list[tuple[int, int]]]] | None = None,
 ) -> None:
+    for loop_marker_id, polygon_points in (filled_loops or []):
+        cv2.fillPoly(frame, [np.array(polygon_points, dtype=np.int32)], marker_color(loop_marker_id))
+
     for marker_id, start, end, segment_thickness in paint_segments:
         cv2.line(
             frame,
@@ -902,6 +991,7 @@ def track_markers(
     marker_ids = target_ids(args)
     trajectories: dict[int, list[tuple[int, int]]] = {}
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int], int]] = []
+    filled_loops: list[tuple[int, list[tuple[int, int]]]] = []
     territory_owner: np.ndarray | None = None
     support_items: list[SupportItem] = []
     active_buffs: dict[int, BuffState] = {}
@@ -922,6 +1012,7 @@ def track_markers(
     def clear_trajectories() -> None:
         trajectories.clear()
         paint_segments.clear()
+        filled_loops.clear()
         if territory_owner is not None:
             territory_owner.fill(UNOWNED_TERRITORY)
             if field_mask is not None:
@@ -1085,6 +1176,7 @@ def track_markers(
                             args.min_trajectory_distance,
                             thickness,
                             field_mask,
+                            filled_loops,
                         )
                     visible_markers.append((marker_corners, marker_id, size_multiplier))
                     marker_positions.append((marker_id, (center_x, center_y)))
@@ -1119,6 +1211,7 @@ def track_markers(
                 paint_segments,
                 trajectories,
                 args.trajectory_thickness,
+                filled_loops,
             )
             projection_visualization = frame.copy()
             draw_support_items(frame, support_items, mushroom_sprite)
