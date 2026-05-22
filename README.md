@@ -126,3 +126,13 @@ uv run python hello.py --camera-source http://IPHONE_ADDRESS:PORT/video --robot-
 For an overhead camera, `x`, `y`, and territory sizes are measured in camera
 image pixels. Calibrate the camera and field later if you need real-world field
 coordinates or square-centimeter territory scoring.
+
+## 俳句（Python 追加）
+
+静かな夜
+Python の蛇行く
+バグほどける
+
+### 解説
+
+「静かな夜」で集中してコードに向き合う時間を置き、「蛇行く」で Python の名にある“蛇”のイメージと、処理が流れて進む感覚を重ねています。結句の「バグほどける」は、絡まった問題が少しずつ解ける瞬間を表しました。短い三行で、実装中の緊張と解決の安堵を対比しています。
