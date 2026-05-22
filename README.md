@@ -126,3 +126,7 @@ uv run python hello.py --camera-source http://IPHONE_ADDRESS:PORT/video --robot-
 For an overhead camera, `x`, `y`, and territory sizes are measured in camera
 image pixels. Calibrate the camera and field later if you need real-world field
 coordinates or square-centimeter territory scoring.
+
+## Haiku
+
+> カメラ越し　マーカー光る　ロボの道
