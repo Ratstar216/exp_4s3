@@ -1189,6 +1189,8 @@ def track_markers(
                 raise RuntimeError("Failed to read a frame from the camera")
             if territory_owner is None:
                 territory_owner = np.full(frame.shape[:2], UNOWNED_TERRITORY, dtype=np.int16)
+            elif frame.shape[:2] != territory_owner.shape:
+                frame = cv2.resize(frame, (territory_owner.shape[1], territory_owner.shape[0]))
             if controller is not None:
                 keep_running = True
                 for command in controller.drain():
