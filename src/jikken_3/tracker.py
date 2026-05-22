@@ -987,6 +987,10 @@ def draw_territory_bar(
     cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
 
     cv2.rectangle(frame, (bar_left, bar_top), (bar_right, bar_bottom), (90, 90, 90), -1)
+    claimed_area = sum(max(0, score_px) for score_px in scores.values())
+    if claimed_area <= 0:
+        cv2.rectangle(frame, (bar_left, bar_top), (bar_right, bar_bottom), (255, 255, 255), 1)
+        return
 
     leaders: set[int] = set()
     if scores:
@@ -1000,7 +1004,7 @@ def draw_territory_bar(
     for marker_id, score_px in score_items:
         if score_px <= 0:
             continue
-        segment_width = int(round(bar_width * score_px / total_area))
+        segment_width = int(round(bar_width * score_px / claimed_area))
         if segment_width <= 0:
             continue
         color = marker_color(marker_id)
@@ -1013,18 +1017,13 @@ def draw_territory_bar(
             cv2.rectangle(frame, (left_cursor, bar_top), (next_right, bar_bottom), color, -1)
             left_cursor = next_right
 
-    claimed_area = sum(scores.values())
-    unclaimed_area = max(0, total_area - claimed_area)
-    if left_cursor < right_cursor and unclaimed_area > 0:
-        cv2.rectangle(frame, (left_cursor, bar_top), (right_cursor, bar_bottom), (90, 90, 90), -1)
-
     cv2.rectangle(frame, (bar_left, bar_top), (bar_right, bar_bottom), (255, 255, 255), 1)
 
     label_y = panel_top + 24
     if scores:
         left_marker_id = next(iter(scores))
         left_score = scores[left_marker_id]
-        left_text = f"P{left_marker_id} {left_score / total_area * 100:.0f}%"
+        left_text = f"P{left_marker_id} {left_score / claimed_area * 100:.0f}%"
         left_color = marker_color(left_marker_id)
         left_thickness = 3 if left_marker_id in leaders and len(leaders) == 1 else 2
         cv2.putText(
@@ -1041,7 +1040,7 @@ def draw_territory_bar(
         right_marker_id = next(reversed(scores))
         if right_marker_id != left_marker_id:
             right_score = scores[right_marker_id]
-            right_text = f"{right_score / total_area * 100:.0f}% P{right_marker_id}"
+            right_text = f"{right_score / claimed_area * 100:.0f}% P{right_marker_id}"
             right_color = marker_color(right_marker_id)
             right_thickness = 3 if right_marker_id in leaders and len(leaders) == 1 else 2
             text_size, _baseline = cv2.getTextSize(
@@ -1060,25 +1059,6 @@ def draw_territory_bar(
                 right_thickness,
                 cv2.LINE_AA,
             )
-
-    if unclaimed_area > 0:
-        neutral_text = f"Unclaimed {unclaimed_area / total_area * 100:.0f}%"
-        neutral_size, _baseline = cv2.getTextSize(
-            neutral_text,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            2,
-        )
-        cv2.putText(
-            frame,
-            neutral_text,
-            ((frame.shape[1] - neutral_size[0]) // 2, panel_bottom - 12),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (220, 220, 220),
-            2,
-            cv2.LINE_AA,
-        )
 
 
 def draw_marker_details(

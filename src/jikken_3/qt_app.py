@@ -180,7 +180,18 @@ class TerritoryBarWidget(QWidget):
         bar_rect = QRectF(panel_rect.left() + 14, panel_rect.top() + 32, panel_rect.width() - 28, 20)
         painter.fillRect(bar_rect, QColor("#5f6670"))
 
-        claimed_area = 0
+        claimed_area = sum(max(0, score) for score in scores.values())
+        if claimed_area <= 0:
+            painter.setPen(QColor("#ffffff"))
+            painter.drawRect(bar_rect)
+            painter.setPen(QColor("#d3dde7"))
+            painter.drawText(
+                panel_rect,
+                Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+                "No territory painted",
+            )
+            return
+
         score_items = list(scores.items())
         right_marker_id = score_items[-1][0] if len(score_items) > 1 else None
         left_cursor = bar_rect.left()
@@ -188,8 +199,7 @@ class TerritoryBarWidget(QWidget):
         for marker_id, score in score_items:
             if score <= 0:
                 continue
-            claimed_area += score
-            width = bar_rect.width() * score / total_area
+            width = bar_rect.width() * score / claimed_area
             if marker_id == right_marker_id:
                 next_left = max(left_cursor, right_cursor - width)
                 segment_rect = QRectF(next_left, bar_rect.top(), right_cursor - next_left, bar_rect.height())
@@ -212,23 +222,15 @@ class TerritoryBarWidget(QWidget):
             painter.drawText(
                 int(bar_rect.left()),
                 int(label_y),
-                f"P{first_id} {first_score / total_area * 100:.0f}%",
+                f"P{first_id} {first_score / claimed_area * 100:.0f}%",
             )
             last_id = next(reversed(scores))
             if last_id != first_id:
                 last_score = scores[last_id]
-                label = f"{last_score / total_area * 100:.0f}% P{last_id}"
+                label = f"{last_score / claimed_area * 100:.0f}% P{last_id}"
                 metrics = painter.fontMetrics()
                 painter.setPen(self._player_color(last_id))
                 painter.drawText(int(bar_rect.right() - metrics.horizontalAdvance(label)), int(label_y), label)
-
-        unclaimed_area = max(0, total_area - claimed_area)
-        painter.setPen(QColor("#d3dde7"))
-        painter.drawText(
-            panel_rect,
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
-            f"Unclaimed {unclaimed_area / total_area * 100:.0f}%",
-        )
 
 
 class TrackerWorker(QThread):
