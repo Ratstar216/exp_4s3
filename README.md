@@ -74,9 +74,11 @@ including by `Ctrl+C`, the latest image with trajectories is saved to
 
 In the Qt UI, the camera feed is shown inside the main window. Use the right
 control panel for mushroom placement, territory clearing, match reset, and
-camera/projector calibration. A second projector window opens alongside the
-control window. Use `Show Projector Window` to hide or reopen it, and `F11`
-inside the projector window to toggle fullscreen projection.
+camera/projector calibration. Two secondary windows open alongside the control
+window: a spectator window with the score bar, timer, and winner display, and a
+projector window that shows only the video output and trajectories. Use
+`Show Spectator Window` or `Show Projector Window` to hide or reopen each
+window, and press `F11` inside either window to toggle fullscreen.
 Manual territory assignment is available through the `Manual Draw P0` and
 `Manual Draw P1` tool buttons. While one of those tools is active, drag with
 the left mouse button on the control window video to paint territory for that
@@ -153,4 +155,3 @@ Python の蛇行く
 | ロボの道（5） | ロボのみち | ロボットが自らの軌跡＝「道」を描いていく |
 
 **解説:** カメラという"目"を通して初めてロボットの位置と向きが明らかになる。マーカーが「光る」という表現は、検出のアルゴリズムが無機質な映像の中からマーカーを識別・可視化する瞬間を擬人化したもの。そしてロボットが描き続ける軌跡は、領土争いの「道」でもあり、実験の記録でもある。
-

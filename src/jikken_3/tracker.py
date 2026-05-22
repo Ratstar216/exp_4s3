@@ -1219,6 +1219,7 @@ def track_markers(
     *,
     controller: TrackerController | None = None,
     frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
+    projection_frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
     render_hud: bool = True,
 ) -> None:
     aruco_dictionary = get_aruco_dictionary(args.dictionary)
@@ -1476,6 +1477,7 @@ def track_markers(
                 trajectories,
                 args.trajectory_thickness,
             )
+            projection_visualization = frame.copy()
             draw_support_items(frame, support_items, mushroom_sprite)
             for marker_corners, marker_id, size_multiplier in visible_markers:
                 draw_marker_details(frame, marker_corners, marker_id, fps, size_multiplier)
@@ -1525,6 +1527,8 @@ def track_markers(
             last_visualization = frame.copy()
             if frame_callback is not None:
                 frame_callback(last_visualization, snapshot)
+            if projection_frame_callback is not None:
+                projection_frame_callback(projection_visualization, snapshot)
 
             if not use_opencv_window:
                 continue
