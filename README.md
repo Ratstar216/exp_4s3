@@ -1,5 +1,7 @@
 # Robot AR Marker Tracker
 
+![](image.png)
+
 Real-time ArUco marker tracking for small robots using a PC camera.
 
 ## Setup
