@@ -12,7 +12,6 @@ import cv2
 import numpy as np
 
 
-WINDOW_NAME = "AR Marker Tracker"
 DEFAULT_MARKER_COLORS = [
     (0, 255, 0),
     (255, 255, 0),
@@ -30,10 +29,7 @@ MIN_TRAJECTORY_THICKNESS = 1
 DEFAULT_OUTLINE_THICKNESS = 2
 DEFAULT_MARKER_RADIUS = 5
 DEFAULT_ARROW_THICKNESS = 2
-TOP_TERRITORY_BAR_HEIGHT = 72
 MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mushroom.png"
-BUTTON_HEIGHT = 42
-BUTTON_WIDTH = 168
 
 ARUCO_DICTIONARIES = {
     "4x4_50": cv2.aruco.DICT_4X4_50,
@@ -84,7 +80,6 @@ class MouseState:
     calibration: CalibrationState
     item_radius: int
     active_tool: str | None = None
-    mushroom_button_rect: tuple[int, int, int, int] | None = None
     manual_draw_marker_id: int | None = None
     manual_draw_last_point: tuple[int, int] | None = None
 
@@ -228,17 +223,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=int,
         default=16,
         help="Trajectory line thickness in pixels.",
-    )
-    parser.add_argument(
-        "--print-every",
-        type=float,
-        default=0.25,
-        help="Seconds between console position updates.",
-    )
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        help="Print tracking data without opening a preview window.",
     )
     parser.add_argument(
         "--generate-marker",
@@ -388,28 +372,6 @@ def build_field_mask(frame_shape: tuple[int, int, int], points: list[tuple[int, 
     return mask
 
 
-def format_time(seconds: float) -> str:
-    total_seconds = max(0, int(seconds))
-    minutes, remainder = divmod(total_seconds, 60)
-    return f"{minutes:02d}:{remainder:02d}"
-
-
-def leader_summary(scores: dict[int, int]) -> str:
-    if not scores:
-        return "Leader: none"
-    sorted_scores = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-    top_score = sorted_scores[0][1]
-    leaders = [marker_id for marker_id, score in sorted_scores if score == top_score]
-    if len(leaders) > 1:
-        leaders_text = ", ".join(f"Player {marker_id}" for marker_id in leaders)
-        return f"Leader: tie ({leaders_text})"
-    leader_id = leaders[0]
-    lowest_score_id = sorted_scores[-1][0] if len(sorted_scores) > 1 else None
-    if lowest_score_id is not None and lowest_score_id != leader_id:
-        return f"Leader: Player {leader_id} | Trailing: Player {lowest_score_id}"
-    return f"Leader: Player {leader_id}"
-
-
 def winning_marker_ids(scores: dict[int, int]) -> list[int]:
     if not scores:
         return []
@@ -493,14 +455,6 @@ def add_calibration_point(calibration: CalibrationState, point: tuple[int, int])
         calibration.mode = None
 
 
-def point_in_rect(point: tuple[int, int], rect: tuple[int, int, int, int] | None) -> bool:
-    if rect is None:
-        return False
-    x, y = point
-    left, top, right, bottom = rect
-    return left <= x <= right and top <= y <= bottom
-
-
 def manual_draw_tool(marker_id: int) -> str:
     return f"manual_draw:{marker_id}"
 
@@ -521,13 +475,6 @@ def set_active_tool(state: MouseState, tool: str | None) -> None:
     state.manual_draw_last_point = None
 
 
-def toggle_tool_mode(state: MouseState, tool: str) -> None:
-    if state.active_tool == tool:
-        set_active_tool(state, None)
-    else:
-        set_active_tool(state, tool)
-
-
 def draw_manual_segment(
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int], int]],
     territory_owner: np.ndarray,
@@ -539,36 +486,6 @@ def draw_manual_segment(
 ) -> None:
     paint_segments.append((marker_id, start, end, thickness))
     paint_territory(territory_owner, marker_id, start, end, thickness, field_mask)
-
-
-def handle_mouse_event(
-    event: int,
-    x: int,
-    y: int,
-    _flags: int,
-    state: MouseState | None,
-) -> None:
-    if state is None:
-        return
-    point = (x, y)
-    if state.calibration.mode is not None:
-        if event == cv2.EVENT_LBUTTONDOWN:
-            add_calibration_point(state.calibration, point)
-        elif event == cv2.EVENT_RBUTTONDOWN:
-            points = active_calibration_points(state.calibration)
-            if points:
-                points.pop()
-        return
-    if event == cv2.EVENT_LBUTTONDOWN and point_in_rect(point, state.mushroom_button_rect):
-        toggle_tool_mode(state, TOOL_MUSHROOM)
-        return
-    if state.active_tool is None:
-        return
-    if event == cv2.EVENT_LBUTTONDOWN and state.active_tool == TOOL_MUSHROOM:
-        state.support_items.append(SupportItem(ITEM_MUSHROOM, point, state.item_radius))
-    elif event == cv2.EVENT_RBUTTONDOWN:
-        remove_nearest_item(state.support_items, point, state.item_radius * 1.5)
-
 
 def check_item_pickups(
     support_items: list[SupportItem],
@@ -686,109 +603,6 @@ def draw_support_items(
         raise RuntimeError(f"Unsupported support item type: {item.item_type}")
 
 
-def draw_info_panel(
-    frame: np.ndarray,
-    lines: list[str],
-    origin: tuple[int, int],
-    align_right: bool = False,
-) -> None:
-    if not lines:
-        return
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.6
-    thickness = 2
-    padding = 12
-    gap = 8
-    sizes = [cv2.getTextSize(line, font, scale, thickness)[0] for line in lines]
-    panel_width = max(width for width, _height in sizes) + padding * 2
-    panel_height = sum(height for _width, height in sizes) + gap * (len(lines) - 1) + padding * 2
-    x, y = origin
-    if align_right:
-        x -= panel_width
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (x, y), (x + panel_width, y + panel_height), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
-    y_cursor = y + padding
-    for line, (_width, height) in zip(lines, sizes):
-        y_cursor += height
-        cv2.putText(
-            frame,
-            line,
-            (x + padding, y_cursor),
-            font,
-            scale,
-            (255, 255, 255),
-            thickness,
-            cv2.LINE_AA,
-        )
-        y_cursor += gap
-
-
-def draw_toggle_button(
-    frame: np.ndarray,
-    label: str,
-    rect: tuple[int, int, int, int],
-    active: bool,
-) -> None:
-    left, top, right, bottom = rect
-    overlay = frame.copy()
-    fill_color = (20, 120, 245) if active else (35, 35, 35)
-    text_color = (255, 255, 255) if active else (230, 230, 230)
-    border_color = (255, 255, 255) if active else (140, 140, 140)
-    cv2.rectangle(overlay, (left, top), (right, bottom), fill_color, -1)
-    cv2.addWeighted(overlay, 0.78, frame, 0.22, 0, frame)
-    cv2.rectangle(frame, (left, top), (right, bottom), border_color, 2)
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.65
-    thickness = 2
-    text_size, _baseline = cv2.getTextSize(label, font, scale, thickness)
-    text_x = left + (right - left - text_size[0]) // 2
-    text_y = top + (bottom - top + text_size[1]) // 2
-    cv2.putText(
-        frame,
-        label,
-        (text_x, text_y),
-        font,
-        scale,
-        text_color,
-        thickness,
-        cv2.LINE_AA,
-    )
-
-
-def draw_center_panel(frame: np.ndarray, lines: list[str]) -> None:
-    if not lines:
-        return
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.8
-    thickness = 2
-    padding = 16
-    gap = 10
-    sizes = [cv2.getTextSize(line, font, scale, thickness)[0] for line in lines]
-    panel_width = max(width for width, _height in sizes) + padding * 2
-    panel_height = sum(height for _width, height in sizes) + gap * (len(lines) - 1) + padding * 2
-    x = (frame.shape[1] - panel_width) // 2
-    y = (frame.shape[0] - panel_height) // 2
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (x, y), (x + panel_width, y + panel_height), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
-    y_cursor = y + padding
-    for line, (width, height) in zip(lines, sizes):
-        y_cursor += height
-        x_text = x + (panel_width - width) // 2
-        cv2.putText(
-            frame,
-            line,
-            (x_text, y_cursor),
-            font,
-            scale,
-            (255, 255, 255),
-            thickness,
-            cv2.LINE_AA,
-        )
-        y_cursor += gap
-
-
 def draw_calibration_guides(frame: np.ndarray, calibration: CalibrationState) -> None:
     if calibration.camera_points:
         points = np.array(calibration.camera_points, dtype=np.int32)
@@ -822,16 +636,6 @@ def draw_calibration_guides(frame: np.ndarray, calibration: CalibrationState) ->
             2,
             cv2.LINE_AA,
         )
-
-
-def draw_game_over_panel(frame: np.ndarray, scores: dict[int, int]) -> None:
-    lines = ["GAME OVER"]
-    if scores:
-        lines.append(winner_banner_text(scores))
-        for marker_id, score in scores.items():
-            lines.append(f"Player {marker_id}: {score} px")
-    draw_center_panel(frame, lines)
-
 
 def target_ids(args: argparse.Namespace) -> set[int] | None:
     ids = set(args.target_id or [])
@@ -927,14 +731,6 @@ def tool_label(tool: str | None) -> str:
     return tool
 
 
-def format_scores(scores: dict[int, int]) -> str:
-    if not scores:
-        return "territory: none"
-    return "territory: " + " | ".join(
-        f"id={marker_id} {score_px}px" for marker_id, score_px in scores.items()
-    )
-
-
 def draw_trajectories(
     frame: np.ndarray,
     paint_segments: list[tuple[int, tuple[int, int], tuple[int, int], int]],
@@ -956,129 +752,6 @@ def draw_trajectories(
             continue
         color = marker_color(marker_id)
         cv2.circle(frame, trajectory[-1], max(6, thickness // 2), color, -1)
-
-
-def draw_territory_bar(
-    frame: np.ndarray,
-    scores: dict[int, int],
-    territory_owner: np.ndarray,
-    field_mask: np.ndarray | None,
-) -> None:
-    total_area = territory_total_area(territory_owner, field_mask)
-    if total_area <= 0:
-        return
-
-    padding = 12
-    panel_height = TOP_TERRITORY_BAR_HEIGHT
-    panel_left = 12
-    panel_top = 12
-    panel_right = frame.shape[1] - 12
-    panel_bottom = panel_top + panel_height
-    bar_left = panel_left + padding
-    bar_right = panel_right - padding
-    bar_top = panel_top + 34
-    bar_bottom = bar_top + 18
-    bar_width = bar_right - bar_left
-    if bar_width <= 0:
-        return
-
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (panel_left, panel_top), (panel_right, panel_bottom), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
-
-    cv2.rectangle(frame, (bar_left, bar_top), (bar_right, bar_bottom), (90, 90, 90), -1)
-
-    leaders: set[int] = set()
-    if scores:
-        top_score = max(scores.values())
-        leaders = {marker_id for marker_id, score in scores.items() if score == top_score and score > 0}
-
-    score_items = list(scores.items())
-    right_marker_id = score_items[-1][0] if len(score_items) > 1 else None
-    left_cursor = bar_left
-    right_cursor = bar_right
-    for marker_id, score_px in score_items:
-        if score_px <= 0:
-            continue
-        segment_width = int(round(bar_width * score_px / total_area))
-        if segment_width <= 0:
-            continue
-        color = marker_color(marker_id)
-        if marker_id == right_marker_id:
-            next_left = max(left_cursor, right_cursor - segment_width)
-            cv2.rectangle(frame, (next_left, bar_top), (right_cursor, bar_bottom), color, -1)
-            right_cursor = next_left
-        else:
-            next_right = min(right_cursor, left_cursor + segment_width)
-            cv2.rectangle(frame, (left_cursor, bar_top), (next_right, bar_bottom), color, -1)
-            left_cursor = next_right
-
-    claimed_area = sum(scores.values())
-    unclaimed_area = max(0, total_area - claimed_area)
-    if left_cursor < right_cursor and unclaimed_area > 0:
-        cv2.rectangle(frame, (left_cursor, bar_top), (right_cursor, bar_bottom), (90, 90, 90), -1)
-
-    cv2.rectangle(frame, (bar_left, bar_top), (bar_right, bar_bottom), (255, 255, 255), 1)
-
-    label_y = panel_top + 24
-    if scores:
-        left_marker_id = next(iter(scores))
-        left_score = scores[left_marker_id]
-        left_text = f"P{left_marker_id} {left_score / total_area * 100:.0f}%"
-        left_color = marker_color(left_marker_id)
-        left_thickness = 3 if left_marker_id in leaders and len(leaders) == 1 else 2
-        cv2.putText(
-            frame,
-            left_text,
-            (bar_left, label_y),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            left_color,
-            left_thickness,
-            cv2.LINE_AA,
-        )
-
-        right_marker_id = next(reversed(scores))
-        if right_marker_id != left_marker_id:
-            right_score = scores[right_marker_id]
-            right_text = f"{right_score / total_area * 100:.0f}% P{right_marker_id}"
-            right_color = marker_color(right_marker_id)
-            right_thickness = 3 if right_marker_id in leaders and len(leaders) == 1 else 2
-            text_size, _baseline = cv2.getTextSize(
-                right_text,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                right_thickness,
-            )
-            cv2.putText(
-                frame,
-                right_text,
-                (bar_right - text_size[0], label_y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                right_color,
-                right_thickness,
-                cv2.LINE_AA,
-            )
-
-    if unclaimed_area > 0:
-        neutral_text = f"Unclaimed {unclaimed_area / total_area * 100:.0f}%"
-        neutral_size, _baseline = cv2.getTextSize(
-            neutral_text,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            2,
-        )
-        cv2.putText(
-            frame,
-            neutral_text,
-            ((frame.shape[1] - neutral_size[0]) // 2, panel_bottom - 12),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (220, 220, 220),
-            2,
-            cv2.LINE_AA,
-        )
 
 
 def draw_marker_details(
@@ -1219,7 +892,7 @@ def track_markers(
     *,
     controller: TrackerController | None = None,
     frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
-    render_hud: bool = True,
+    projection_frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
 ) -> None:
     aruco_dictionary = get_aruco_dictionary(args.dictionary)
     detector = create_detector(aruco_dictionary)
@@ -1239,22 +912,12 @@ def track_markers(
     final_scores: dict[int, int] = {}
 
     last_frame_time = time.monotonic()
-    last_print_time = 0.0
     last_visualization: np.ndarray | None = None
     fps = 0.0
     interaction_state = MouseState(support_items, calibration, args.item_radius)
-    use_opencv_window = not args.headless and controller is None
 
-    if args.headless and controller is None:
+    if controller is None:
         print("Tracking started. Press Ctrl+C to quit.")
-    elif use_opencv_window:
-        print(
-            "Tracking started. Press q to quit, c to clear trails, r to reset, "
-            "click the Mushroom button to toggle placement, k to calibrate camera, "
-            "p to calibrate projector."
-        )
-        cv2.namedWindow(WINDOW_NAME)
-        cv2.setMouseCallback(WINDOW_NAME, handle_mouse_event, interaction_state)
 
     def clear_trajectories() -> None:
         trajectories.clear()
@@ -1389,7 +1052,6 @@ def track_markers(
                 fps = 0.9 * fps + 0.1 * (1.0 / elapsed) if fps else 1.0 / elapsed
 
             corners, ids = detect_markers(frame, aruco_dictionary, detector)
-            detections: list[str] = []
             visible_markers: list[tuple[np.ndarray, int, float]] = []
             marker_positions: list[tuple[int, tuple[int, int]]] = []
             prune_expired_buffs(active_buffs, now)
@@ -1407,7 +1069,6 @@ def track_markers(
                         continue
 
                     center_x, center_y = marker_center(marker_corners)
-                    heading = marker_heading_degrees(marker_corners)
                     size_multiplier = active_size_multiplier(marker_id, active_buffs, now)
                     if updates_enabled:
                         thickness = max(
@@ -1425,10 +1086,6 @@ def track_markers(
                             thickness,
                             field_mask,
                         )
-                    detections.append(
-                        f"id={marker_id} x={center_x} y={center_y} "
-                        f"heading={heading:.1f} path={len(trajectories[marker_id])}"
-                    )
                     visible_markers.append((marker_corners, marker_id, size_multiplier))
                     marker_positions.append((marker_id, (center_x, center_y)))
 
@@ -1450,24 +1107,11 @@ def track_markers(
                     final_scores = scores
                 if final_scores:
                     scores = final_scores
-            leader_text = leader_summary(scores)
             total_area = territory_total_area(territory_owner, field_mask)
             buff_remaining = {
                 marker_id: max(0.0, buff.expires_at - now)
                 for marker_id, buff in sorted(active_buffs.items())
             }
-            if controller is None and now - last_print_time >= args.print_every:
-                status_parts = [format_scores(scores), leader_text]
-                if remaining_seconds is not None:
-                    status_parts.insert(0, f"time={format_time(remaining_seconds)}")
-                if game_over:
-                    status_parts.append("GAME OVER")
-                status_message = " | ".join(status_parts)
-                if detections:
-                    print(f"{' | '.join(detections)} | {status_message}", flush=True)
-                else:
-                    print(f"no marker | {status_message}", flush=True)
-                last_print_time = now
 
             render_territory_overlay(frame, territory_owner, marker_ids, field_mask)
             draw_trajectories(
@@ -1476,42 +1120,11 @@ def track_markers(
                 trajectories,
                 args.trajectory_thickness,
             )
+            projection_visualization = frame.copy()
             draw_support_items(frame, support_items, mushroom_sprite)
             for marker_corners, marker_id, size_multiplier in visible_markers:
                 draw_marker_details(frame, marker_corners, marker_id, fps, size_multiplier)
-            if render_hud:
-                draw_territory_bar(frame, scores, territory_owner, field_mask)
-                if use_opencv_window:
-                    button_top = TOP_TERRITORY_BAR_HEIGHT + 24
-                    mushroom_button_rect = (
-                        12,
-                        button_top,
-                        12 + BUTTON_WIDTH,
-                        button_top + BUTTON_HEIGHT,
-                    )
-                    interaction_state.mushroom_button_rect = mushroom_button_rect
-                    draw_toggle_button(
-                        frame,
-                        "Mushroom",
-                        mushroom_button_rect,
-                        interaction_state.active_tool == TOOL_MUSHROOM,
-                    )
-                status_lines: list[str] = []
-                if remaining_seconds is not None:
-                    status_lines.append(f"Time: {format_time(remaining_seconds)}")
-                status_lines.append(f"Mode: {tool_label(interaction_state.active_tool)}")
-                if buff_remaining:
-                    for marker_id, seconds_left in buff_remaining.items():
-                        status_lines.append(f"Boost P{marker_id}: {seconds_left:.1f}s")
-                draw_info_panel(
-                    frame,
-                    status_lines,
-                    (frame.shape[1] - 12, TOP_TERRITORY_BAR_HEIGHT + 24),
-                    align_right=True,
-                )
             draw_calibration_guides(frame, calibration)
-            if game_over and render_hud:
-                draw_game_over_panel(frame, scores)
             snapshot = TrackerSnapshot(
                 scores=dict(scores),
                 total_area=total_area,
@@ -1525,33 +1138,13 @@ def track_markers(
             last_visualization = frame.copy()
             if frame_callback is not None:
                 frame_callback(last_visualization, snapshot)
-
-            if not use_opencv_window:
-                continue
-
-            cv2.imshow(WINDOW_NAME, frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q") or key == 27:
-                break
-            if key == ord("c"):
-                clear_trajectories()
-                print("cleared trajectories", flush=True)
-            if key == ord("r"):
-                reset_game()
-                print("reset game state", flush=True)
-            if key == ord("k"):
-                new_mode = None if calibration.mode == CALIBRATION_CAMERA else CALIBRATION_CAMERA
-                set_calibration_mode(calibration, new_mode)
-            if key == ord("p"):
-                new_mode = None if calibration.mode == CALIBRATION_PROJECTOR else CALIBRATION_PROJECTOR
-                set_calibration_mode(calibration, new_mode)
+            if projection_frame_callback is not None:
+                projection_frame_callback(projection_visualization, snapshot)
     except KeyboardInterrupt:
         print("\nInterrupted by Ctrl+C.")
     finally:
         save_trajectory_image(args.trajectory_output, last_visualization)
         capture.release()
-        if not args.headless:
-            cv2.destroyAllWindows()
 
 
 def main() -> None:

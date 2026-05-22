@@ -180,7 +180,18 @@ class TerritoryBarWidget(QWidget):
         bar_rect = QRectF(panel_rect.left() + 14, panel_rect.top() + 32, panel_rect.width() - 28, 20)
         painter.fillRect(bar_rect, QColor("#5f6670"))
 
-        claimed_area = 0
+        claimed_area = sum(max(0, score) for score in scores.values())
+        if claimed_area <= 0:
+            painter.setPen(QColor("#ffffff"))
+            painter.drawRect(bar_rect)
+            painter.setPen(QColor("#d3dde7"))
+            painter.drawText(
+                panel_rect,
+                Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+                "No territory painted",
+            )
+            return
+
         score_items = list(scores.items())
         right_marker_id = score_items[-1][0] if len(score_items) > 1 else None
         left_cursor = bar_rect.left()
@@ -188,8 +199,7 @@ class TerritoryBarWidget(QWidget):
         for marker_id, score in score_items:
             if score <= 0:
                 continue
-            claimed_area += score
-            width = bar_rect.width() * score / total_area
+            width = bar_rect.width() * score / claimed_area
             if marker_id == right_marker_id:
                 next_left = max(left_cursor, right_cursor - width)
                 segment_rect = QRectF(next_left, bar_rect.top(), right_cursor - next_left, bar_rect.height())
@@ -212,27 +222,20 @@ class TerritoryBarWidget(QWidget):
             painter.drawText(
                 int(bar_rect.left()),
                 int(label_y),
-                f"P{first_id} {first_score / total_area * 100:.0f}%",
+                f"P{first_id} {first_score / claimed_area * 100:.0f}%",
             )
             last_id = next(reversed(scores))
             if last_id != first_id:
                 last_score = scores[last_id]
-                label = f"{last_score / total_area * 100:.0f}% P{last_id}"
+                label = f"{last_score / claimed_area * 100:.0f}% P{last_id}"
                 metrics = painter.fontMetrics()
                 painter.setPen(self._player_color(last_id))
                 painter.drawText(int(bar_rect.right() - metrics.horizontalAdvance(label)), int(label_y), label)
 
-        unclaimed_area = max(0, total_area - claimed_area)
-        painter.setPen(QColor("#d3dde7"))
-        painter.drawText(
-            panel_rect,
-            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
-            f"Unclaimed {unclaimed_area / total_area * 100:.0f}%",
-        )
-
 
 class TrackerWorker(QThread):
     frame_ready = Signal(object, object)
+    projection_frame_ready = Signal(object, object)
     failed = Signal(str)
 
     def __init__(self, args, controller: TrackerController) -> None:
@@ -246,7 +249,7 @@ class TrackerWorker(QThread):
                 self._args,
                 controller=self._controller,
                 frame_callback=self._publish_frame,
-                render_hud=False,
+                projection_frame_callback=self._publish_projection_frame,
             )
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -254,17 +257,24 @@ class TrackerWorker(QThread):
     def _publish_frame(self, frame: np.ndarray, snapshot: TrackerSnapshot) -> None:
         self.frame_ready.emit(frame.copy(), snapshot)
 
+    def _publish_projection_frame(
+        self,
+        frame: np.ndarray,
+        snapshot: TrackerSnapshot,
+    ) -> None:
+        self.projection_frame_ready.emit(frame.copy(), snapshot)
+
     def stop(self) -> None:
         self._controller.stop()
         self.wait(3000)
 
 
-class ProjectorWindow(QMainWindow):
+class SpectatorWindow(QMainWindow):
     closed = Signal()
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("AR Marker Tracker Projector")
+        self.setWindowTitle("AR Marker Tracker Spectator")
         self.resize(1280, 800)
         self.setStyleSheet(
             """
@@ -319,7 +329,7 @@ class ProjectorWindow(QMainWindow):
         self._time_label.setObjectName("projectorInfo")
         info_row.addWidget(self._time_label, alignment=Qt.AlignmentFlag.AlignLeft)
         info_row.addStretch(1)
-        self._mode_label = QLabel("Projection")
+        self._mode_label = QLabel("Spectator")
         self._mode_label.setObjectName("projectorInfo")
         info_row.addWidget(self._mode_label, alignment=Qt.AlignmentFlag.AlignRight)
         root_layout.addLayout(info_row)
@@ -358,7 +368,7 @@ class ProjectorWindow(QMainWindow):
             if snapshot.remaining_seconds is None
             else f"{int(snapshot.remaining_seconds) // 60:02d}:{int(snapshot.remaining_seconds) % 60:02d}"
         )
-        self._mode_label.setText("Projection")
+        self._mode_label.setText("Spectator")
         winners = winning_marker_ids(snapshot.scores)
         self._winner_label.setText(winner_banner_text(snapshot.scores))
         if len(winners) == 1:
@@ -375,7 +385,7 @@ class ProjectorWindow(QMainWindow):
         self._winner_label.setVisible(snapshot.game_over)
         self._game_over_label.setVisible(snapshot.game_over)
 
-    def set_projector_fullscreen(self, enabled: bool) -> None:
+    def set_fullscreen(self, enabled: bool) -> None:
         if enabled:
             self.showFullScreen()
         else:
@@ -383,10 +393,52 @@ class ProjectorWindow(QMainWindow):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key.Key_F11:
-            self.set_projector_fullscreen(not self.isFullScreen())
+            self.set_fullscreen(not self.isFullScreen())
             return
         if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
-            self.set_projector_fullscreen(False)
+            self.set_fullscreen(False)
+            return
+        super().keyPressEvent(event)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.closed.emit()
+        super().closeEvent(event)
+
+
+class ProjectorWindow(QMainWindow):
+    closed = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setWindowTitle("AR Marker Tracker Projector")
+        self.resize(1280, 720)
+        self.setStyleSheet(
+            """
+            QMainWindow, QWidget {
+                background: #000000;
+            }
+            """
+        )
+
+        self._video = VideoCanvas()
+        self._video.setMinimumSize(1, 1)
+        self.setCentralWidget(self._video)
+
+    def apply_frame_update(self, frame: np.ndarray, _snapshot: TrackerSnapshot) -> None:
+        self._video.set_frame(frame)
+
+    def set_fullscreen(self, enabled: bool) -> None:
+        if enabled:
+            self.showFullScreen()
+        else:
+            self.showNormal()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key.Key_F11:
+            self.set_fullscreen(not self.isFullScreen())
+            return
+        if event.key() == Qt.Key.Key_Escape and self.isFullScreen():
+            self.set_fullscreen(False)
             return
         super().keyPressEvent(event)
 
@@ -413,8 +465,11 @@ class MainWindow(QMainWindow):
         self._worker = TrackerWorker(args, self._controller)
         self._worker.frame_ready.connect(self._apply_frame_update)
         self._worker.failed.connect(self._show_worker_error)
+        self._spectator_window = SpectatorWindow()
+        self._worker.frame_ready.connect(self._spectator_window.apply_frame_update)
+        self._spectator_window.closed.connect(self._on_spectator_closed)
         self._projector_window = ProjectorWindow()
-        self._worker.frame_ready.connect(self._projector_window.apply_frame_update)
+        self._worker.projection_frame_ready.connect(self._projector_window.apply_frame_update)
         self._projector_window.closed.connect(self._on_projector_closed)
 
         self.setWindowTitle("AR Marker Tracker")
@@ -534,6 +589,12 @@ class MainWindow(QMainWindow):
         self._projector_calibration_button.toggled.connect(self._on_projector_calibration_toggled)
         panel_layout.addWidget(self._projector_calibration_button)
 
+        self._show_spectator_button = QPushButton("Show Spectator Window")
+        self._show_spectator_button.setCheckable(True)
+        self._show_spectator_button.setChecked(True)
+        self._show_spectator_button.toggled.connect(self._on_show_spectator_toggled)
+        panel_layout.addWidget(self._show_spectator_button)
+
         self._show_projector_button = QPushButton("Show Projector Window")
         self._show_projector_button.setCheckable(True)
         self._show_projector_button.setChecked(True)
@@ -555,6 +616,7 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.close)
         self.addAction(quit_action)
 
+        self._spectator_window.show()
         self._projector_window.show()
         self._worker.start()
 
@@ -605,17 +667,31 @@ class MainWindow(QMainWindow):
         else:
             self._controller.set_calibration_mode(None)
 
+    def _on_show_spectator_toggled(self, checked: bool) -> None:
+        if checked:
+            self._spectator_window.show()
+            self._spectator_window.raise_()
+            self._spectator_window.activateWindow()
+        else:
+            self._spectator_window.set_fullscreen(False)
+            self._spectator_window.hide()
+
+    def _on_spectator_closed(self) -> None:
+        self._spectator_window.set_fullscreen(False)
+        with QSignalBlocker(self._show_spectator_button):
+            self._show_spectator_button.setChecked(False)
+
     def _on_show_projector_toggled(self, checked: bool) -> None:
         if checked:
             self._projector_window.show()
             self._projector_window.raise_()
             self._projector_window.activateWindow()
         else:
-            self._projector_window.set_projector_fullscreen(False)
+            self._projector_window.set_fullscreen(False)
             self._projector_window.hide()
 
     def _on_projector_closed(self) -> None:
-        self._projector_window.set_projector_fullscreen(False)
+        self._projector_window.set_fullscreen(False)
         with QSignalBlocker(self._show_projector_button):
             self._show_projector_button.setChecked(False)
 
@@ -654,6 +730,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         with suppress(RuntimeError):
             self._worker.stop()
+        if self._spectator_window.isVisible():
+            self._spectator_window.close()
         if self._projector_window.isVisible():
             self._projector_window.close()
         super().closeEvent(event)
@@ -668,8 +746,7 @@ def main(argv: list[str] | None = None) -> int:
         generate_marker(args)
         return 0
 
-    args.headless = True
-    app = QApplication(sys.argv if argv is None else ["qt_app.py", *argv])
+    app = QApplication(sys.argv if argv is None else ["hello.py", *argv])
     window = MainWindow(args)
     window.show()
     return app.exec()
