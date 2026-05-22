@@ -8,6 +8,20 @@ Real-time ArUco marker tracking for small robots using a PC camera.
 uv sync
 ```
 
+## Run the Tracker
+
+Legacy OpenCV window:
+
+```sh
+uv run python hello.py --robot-ids 0 1
+```
+
+Qt UI:
+
+```sh
+uv run python qt_app.py --robot-ids 0 1
+```
+
 ## Generate a Marker
 
 Print one marker per robot and attach it flat on top of the robot.
@@ -33,6 +47,8 @@ For two robots, track both marker IDs at the same time:
 uv run python hello.py --robot-ids 0 1
 ```
 
+For the Qt interface, use the same options with `qt_app.py`.
+
 The preview window draws each detected marker border, center point, ID, heading,
 frame rate, and broad colored trajectory. Trajectories are drawn in movement
 order, so a robot can overwrite territory by driving over the opponent's older
@@ -46,13 +62,26 @@ territory scores:
 id=0 x=645 y=318 heading=2.4 path=42 | id=1 x=220 y=510 heading=-88.1 path=39 | territory: id=0 8200px | id=1 7600px
 ```
 
-Press `q` or `Esc` in the preview window to quit. Press `c` to clear all
+In the legacy OpenCV window, press `q` or `Esc` to quit. Press `c` to clear all
 trajectories while tracking continues. Press `r` to reset the game state and
-timer. Press `k` to start camera calibration, then click four field corners.
-Press `p` to start projector calibration, then click four projection corners.
-Left click on the field to place a mushroom support item and right click to
-remove the nearest item. When tracking stops, including by `Ctrl+C`, the latest
-image with trajectories is saved to `trajectories.png`.
+timer. Click the on-screen `Mushroom` button to toggle mushroom placement mode.
+While mushroom placement mode is active, left click on the field to place a
+mushroom support item and right click to remove the nearest item. Press `k` to
+start camera calibration, then click four field corners. Press `p` to start
+projector calibration, then click four projection corners. When tracking stops,
+including by `Ctrl+C`, the latest image with trajectories is saved to
+`trajectories.png`.
+
+In the Qt UI, the camera feed is shown inside the main window. Use the right
+control panel for mushroom placement, territory clearing, match reset, and
+camera/projector calibration. A second projector window opens alongside the
+control window. Use `Show Projector Window` to hide or reopen it, and `F11`
+inside the projector window to toggle fullscreen projection.
+Manual territory assignment is available through the `Manual Draw P0` and
+`Manual Draw P1` tool buttons. While one of those tools is active, drag with
+the left mouse button on the control window video to paint territory for that
+player. Right click continues to remove the nearest mushroom while mushroom
+placement mode is active.
 
 Useful options:
 
