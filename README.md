@@ -127,6 +127,17 @@ For an overhead camera, `x`, `y`, and territory sizes are measured in camera
 image pixels. Calibrate the camera and field later if you need real-world field
 coordinates or square-centimeter territory scoring.
 
+
+## 俳句（Python 追加）
+
+静かな夜
+Python の蛇行く
+バグほどける
+
+### 解説
+
+「静かな夜」で集中してコードに向き合う時間を置き、「蛇行く」で Python の名にある“蛇”のイメージと、処理が流れて進む感覚を重ねています。結句の「バグほどける」は、絡まった問題が少しずつ解ける瞬間を表しました。短い三行で、実装中の緊張と解決の安堵を対比しています。
+
 ## Haiku
 
 > カメラ越し　マーカー光る　ロボの道
@@ -142,3 +153,4 @@ coordinates or square-centimeter territory scoring.
 | ロボの道（5） | ロボのみち | ロボットが自らの軌跡＝「道」を描いていく |
 
 **解説:** カメラという"目"を通して初めてロボットの位置と向きが明らかになる。マーカーが「光る」という表現は、検出のアルゴリズムが無機質な映像の中からマーカーを識別・可視化する瞬間を擬人化したもの。そしてロボットが描き続ける軌跡は、領土争いの「道」でもあり、実験の記録でもある。
+
