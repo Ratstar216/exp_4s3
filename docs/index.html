@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Robot AR Marker Tracker: real-time ArUco marker tracking, territory scoring, and projector output for small robot matches."
+    >
+    <title>Robot AR Marker Tracker</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Robot AR Marker Tracker home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Robot AR Marker Tracker</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#setup">Setup</a>
+        <a href="#markers">Markers</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Python 3.13 / OpenCV / PySide6</p>
+          <h1 id="hero-title">Robot AR Marker Tracker</h1>
+          <p class="hero-text">
+            A desktop control app for tracking ArUco-tagged robots in real time,
+            painting territory from their paths, and showing match state across
+            control, spectator, and projector windows.
+          </p>
+          <div class="hero-actions" aria-label="Project actions">
+            <a class="button primary" href="#setup">Run the tracker</a>
+            <a class="button secondary" href="#markers">Print markers</a>
+          </div>
+        </div>
+
+        <div class="field-demo" aria-label="Stylized tracker preview">
+          <div class="field-lines" aria-hidden="true"></div>
+          <div class="trail trail-p0" aria-hidden="true"></div>
+          <div class="trail trail-p1" aria-hidden="true"></div>
+          <figure class="robot robot-p0">
+            <img src="assets/marker-0.png" alt="ArUco marker ID 0">
+            <figcaption>P0</figcaption>
+          </figure>
+          <figure class="robot robot-p1">
+            <img src="assets/marker-1.png" alt="ArUco marker ID 1">
+            <figcaption>P1</figcaption>
+          </figure>
+          <div class="score-strip" aria-label="Painted territory score preview">
+            <span class="score-p0" style="width: 56%"></span>
+            <span class="score-p1" style="width: 44%"></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="summary-band" aria-label="Project summary">
+        <div>
+          <strong>Camera tracking</strong>
+          <span>OpenCV reads a local, URL, or file-based camera source.</span>
+        </div>
+        <div>
+          <strong>Match display</strong>
+          <span>Qt windows split control, spectator, and projector views.</span>
+        </div>
+        <div>
+          <strong>Territory game</strong>
+          <span>Robot paths paint territory and support item boosts affect play.</span>
+        </div>
+      </section>
+
+      <section id="features" class="section split">
+        <div>
+          <p class="eyebrow">Tracking workflow</p>
+          <h2>Built for camera-overhead robot matches.</h2>
+        </div>
+        <div class="feature-grid">
+          <article>
+            <h3>ArUco marker detection</h3>
+            <p>
+              Detect marker IDs, centers, borders, heading, and frame rate from
+              the live camera feed.
+            </p>
+          </article>
+          <article>
+            <h3>Territory scoring</h3>
+            <p>
+              Draw broad colored trajectories, let robots overwrite territory,
+              and show each player's share during the match.
+            </p>
+          </article>
+          <article>
+            <h3>Operator controls</h3>
+            <p>
+              Place mushroom support items, manually paint or erase territory,
+              reset matches, and calibrate camera/projector points.
+            </p>
+          </article>
+          <article>
+            <h3>Presentation output</h3>
+            <p>
+              Keep the control UI on one screen while spectator and projector
+              windows show match-ready views.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="setup" class="section setup-section">
+        <div>
+          <p class="eyebrow">Local setup</p>
+          <h2>Run with uv.</h2>
+          <p>
+            The repository is managed by uv and targets Python 3.13. Install
+            dependencies, then start the tracker with one or more robot IDs.
+          </p>
+        </div>
+        <div class="terminal-stack" aria-label="Setup commands">
+          <pre><code>uv sync</code></pre>
+          <pre><code>uv run python hello.py --robot-ids 0 1</code></pre>
+          <pre><code>uv run python hello.py --list-cameras</code></pre>
+        </div>
+      </section>
+
+      <section id="markers" class="section marker-section">
+        <div class="marker-copy">
+          <p class="eyebrow">Robot tags</p>
+          <h2>Print one marker per robot.</h2>
+          <p>
+            Attach each marker flat on top of a robot. Keep the ArUco dictionary
+            consistent between marker generation and tracking.
+          </p>
+          <pre><code>uv run python hello.py --generate-marker 0 --output marker-0.png
+uv run python hello.py --generate-marker 1 --output marker-1.png</code></pre>
+        </div>
+        <div class="marker-gallery" aria-label="Marker examples">
+          <figure>
+            <img src="assets/marker-0.png" alt="Printable ArUco marker 0">
+            <figcaption>Marker 0</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/marker-1.png" alt="Printable ArUco marker 1">
+            <figcaption>Marker 1</figcaption>
+          </figure>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <span>jikken-3</span>
+      <a href="https://github.com/Ratstar216/exp_4s3" rel="noreferrer">View on GitHub</a>
+    </footer>
+  </body>
+</html>
