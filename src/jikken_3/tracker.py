@@ -160,6 +160,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Camera index passed to OpenCV VideoCapture.",
     )
     parser.add_argument(
+        "--window-capture",
+        metavar="WINDOW_NAME",
+        help='Capture a named macOS window instead of a camera (e.g. "Desk View").',
+    )
+    parser.add_argument(
         "--camera-source",
         help=(
             "Camera source passed to OpenCV VideoCapture. Use this for an IP/RTSP/"
@@ -961,6 +966,73 @@ def open_camera(camera_source: int | str, width: int, height: int) -> cv2.VideoC
     return capture
 
 
+class WindowCapture:
+    """Capture a named macOS window via Quartz CGWindowListCreateImage."""
+
+    def __init__(self, window_name: str) -> None:
+        self._window_name = window_name
+        try:
+            import Quartz  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                "pyobjc-framework-Quartz is required for --window-capture. "
+                "Install it with: uv add pyobjc-framework-Quartz"
+            ) from exc
+
+    def _find_window_id(self) -> int | None:
+        import Quartz
+        windows = Quartz.CGWindowListCopyWindowInfo(
+            Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+            Quartz.kCGNullWindowID,
+        )
+        query = self._window_name.lower()
+        for w in windows:
+            name = (w.get("kCGWindowName") or "").lower()
+            owner = (w.get("kCGWindowOwnerName") or "").lower()
+            if query in name or query in owner:
+                return w.get("kCGWindowNumber")
+        return None
+
+    def isOpened(self) -> bool:
+        return True
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        import Quartz
+        window_id = self._find_window_id()
+        if window_id is None:
+            return False, None
+        image = Quartz.CGWindowListCreateImage(
+            Quartz.CGRectNull,
+            Quartz.kCGWindowListOptionIncludingWindow,
+            window_id,
+            Quartz.kCGWindowImageBoundsIgnoreFraming,
+        )
+        if image is None:
+            return False, None
+        width = Quartz.CGImageGetWidth(image)
+        height = Quartz.CGImageGetHeight(image)
+        if width == 0 or height == 0:
+            return False, None
+        bytes_per_row = Quartz.CGImageGetBytesPerRow(image)
+        data = Quartz.CGDataProviderCopyData(Quartz.CGImageGetDataProvider(image))
+        arr = np.frombuffer(data, dtype=np.uint8).reshape((height, bytes_per_row))
+        arr = arr[:, : width * 4].reshape((height, width, 4))
+        return True, cv2.cvtColor(arr, cv2.COLOR_BGRA2BGR)
+
+    def set(self, *_args: object) -> bool:
+        return False
+
+    def release(self) -> None:
+        pass
+
+
+def open_capture(args: argparse.Namespace) -> cv2.VideoCapture | WindowCapture:
+    if getattr(args, "window_capture", None):
+        return WindowCapture(args.window_capture)
+    camera_source = parse_camera_source(args.camera_source, args.camera_index)
+    return open_camera(camera_source, args.width, args.height)
+
+
 def save_trajectory_image(path: Path, frame: np.ndarray | None) -> None:
     if frame is None:
         print("No trajectory image was saved because no frame was captured.")
@@ -985,8 +1057,7 @@ def track_markers(
 ) -> None:
     aruco_dictionary = get_aruco_dictionary(args.dictionary)
     detector = create_detector(aruco_dictionary)
-    camera_source = parse_camera_source(args.camera_source, args.camera_index)
-    capture = open_camera(camera_source, args.width, args.height)
+    capture = open_capture(args)
     mushroom_sprite = load_item_sprite(MUSHROOM_SPRITE_PATH)
     marker_ids = target_ids(args)
     trajectories: dict[int, list[tuple[int, int]]] = {}
