@@ -54,13 +54,14 @@ class VideoCanvas(QWidget):
     left_released = Signal(int, int)
     right_pressed = Signal(int, int)
 
-    def __init__(self, bg_color: str = "#0c1118") -> None:
+    def __init__(self, bg_color: str = "#0c1118", stretch: bool = False) -> None:
         super().__init__()
         self._image: QImage | None = None
         self._rgb_frame: np.ndarray | None = None
         self._left_drag_active = False
         self._bg_color = QColor(bg_color)
-        self.setMinimumSize(960, 540)
+        self._stretch = stretch
+        self.setMinimumSize(320, 180)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
 
@@ -97,10 +98,12 @@ class VideoCanvas(QWidget):
     def paintEvent(self, _event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.fillRect(self.rect(), self._bg_color)
-        target = self._target_rect()
-        if self._image is None or target is None:
+        if self._image is None:
             painter.setPen(QColor("#9fb0c0"))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Waiting for camera frames...")
+            return
+        target = QRectF(self.rect()) if self._stretch else self._target_rect()
+        if target is None:
             return
         painter.drawImage(target, self._image)
 
@@ -421,7 +424,7 @@ class ProjectorWindow(QMainWindow):
             """
         )
 
-        self._video = VideoCanvas(bg_color="#ffffff")
+        self._video = VideoCanvas(bg_color="#ffffff", stretch=True)
         self._video.setMinimumSize(1, 1)
         self.setCentralWidget(self._video)
 
@@ -474,7 +477,6 @@ class MainWindow(QMainWindow):
         self._projector_window.closed.connect(self._on_projector_closed)
 
         self.setWindowTitle("AR Marker Tracker")
-        self.resize(1500, 920)
         self.setStyleSheet(
             """
             QMainWindow, QWidget {
@@ -749,7 +751,7 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QApplication(sys.argv if argv is None else ["hello.py", *argv])
     window = MainWindow(args)
-    window.show()
+    window.showMaximized()
     return app.exec()
 
 

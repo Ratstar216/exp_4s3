@@ -1067,6 +1067,7 @@ def should_use_marker(marker_id: int, marker_ids: set[int] | None) -> bool:
     return marker_ids is None or marker_id in marker_ids
 
 
+
 def track_markers(
     args: argparse.Namespace,
     *,
@@ -1210,6 +1211,7 @@ def track_markers(
                 territory_owner = np.full(frame.shape[:2], UNOWNED_TERRITORY, dtype=np.int16)
             elif frame.shape[:2] != territory_owner.shape:
                 frame = cv2.resize(frame, (territory_owner.shape[1], territory_owner.shape[0]))
+
             if controller is not None:
                 keep_running = True
                 for command in controller.drain():
@@ -1334,6 +1336,17 @@ def track_markers(
                     size_multiplier,
                 )
             draw_calibration_guides(projection_visualization, calibration)
+
+            # Warp projector output to fit the manually calibrated field rectangle
+            if len(calibration.camera_points) == 4:
+                h, w = projection_visualization.shape[:2]
+                src = np.array(order_quad_points(calibration.camera_points), dtype=np.float32)
+                dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+                H = cv2.getPerspectiveTransform(src, dst)
+                projection_visualization = cv2.warpPerspective(
+                    projection_visualization, H, (w, h),
+                    borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255),
+                )
 
             snapshot = TrackerSnapshot(
                 scores=dict(scores),
