@@ -165,6 +165,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help='Capture a named macOS window instead of a camera (e.g. "Desk View").',
     )
     parser.add_argument(
+        "--list-windows",
+        action="store_true",
+        help="List capturable macOS windows and exit.",
+    )
+    parser.add_argument(
         "--camera-source",
         help=(
             "Camera source passed to OpenCV VideoCapture. Use this for an IP/RTSP/"
@@ -985,21 +990,63 @@ def open_camera(camera_source: int | str, width: int, height: int) -> cv2.VideoC
     return capture
 
 
+def _load_quartz() -> object:
+    try:
+        import Quartz
+    except ImportError as exc:
+        raise RuntimeError(
+            "pyobjc-framework-Quartz is required for --window-capture and "
+            "--list-windows. Install it with: uv add pyobjc-framework-Quartz"
+        ) from exc
+    return Quartz
+
+
+def _window_title(window: dict[object, object]) -> str:
+    owner = str(window.get("kCGWindowOwnerName") or "").strip()
+    name = str(window.get("kCGWindowName") or "").strip()
+    if owner and name:
+        return f"{owner} - {name}"
+    return owner or name or "<unnamed window>"
+
+
+def list_windows() -> None:
+    Quartz = _load_quartz()
+    windows = Quartz.CGWindowListCopyWindowInfo(
+        Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGNullWindowID,
+    )
+    visible_windows = [
+        window
+        for window in windows
+        if window.get("kCGWindowNumber")
+        and (window.get("kCGWindowOwnerName") or window.get("kCGWindowName"))
+    ]
+    if not visible_windows:
+        print(
+            "No capturable windows found. On macOS, allow your terminal or IDE "
+            "under System Settings > Privacy & Security > Screen & System Audio Recording."
+        )
+        return
+    for window in visible_windows:
+        bounds = window.get("kCGWindowBounds") or {}
+        width = int(bounds.get("Width", 0))
+        height = int(bounds.get("Height", 0))
+        print(
+            f"{int(window['kCGWindowNumber'])}: {_window_title(window)} "
+            f"({width}x{height})"
+        )
+
+
 class WindowCapture:
     """Capture a named macOS window via Quartz CGWindowListCreateImage."""
 
     def __init__(self, window_name: str) -> None:
         self._window_name = window_name
-        try:
-            import Quartz  # noqa: F401
-        except ImportError as exc:
-            raise RuntimeError(
-                "pyobjc-framework-Quartz is required for --window-capture. "
-                "Install it with: uv add pyobjc-framework-Quartz"
-            ) from exc
+        self.last_error = ""
+        _load_quartz()
 
     def _find_window_id(self) -> int | None:
-        import Quartz
+        Quartz = _load_quartz()
         windows = Quartz.CGWindowListCopyWindowInfo(
             Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
             Quartz.kCGNullWindowID,
@@ -1016,9 +1063,14 @@ class WindowCapture:
         return True
 
     def read(self) -> tuple[bool, np.ndarray | None]:
-        import Quartz
+        Quartz = _load_quartz()
+        self.last_error = ""
         window_id = self._find_window_id()
         if window_id is None:
+            self.last_error = (
+                f'Could not find a visible macOS window matching "{self._window_name}". '
+                "Run with --list-windows to see the available window names."
+            )
             return False, None
         image = Quartz.CGWindowListCreateImage(
             Quartz.CGRectNull,
@@ -1027,10 +1079,19 @@ class WindowCapture:
             Quartz.kCGWindowImageBoundsIgnoreFraming,
         )
         if image is None:
+            self.last_error = (
+                f'Quartz returned no image for window "{self._window_name}". '
+                "Make sure the window is visible, not minimized, and that the app "
+                "running this command has Screen & System Audio Recording permission."
+            )
             return False, None
         width = Quartz.CGImageGetWidth(image)
         height = Quartz.CGImageGetHeight(image)
         if width == 0 or height == 0:
+            self.last_error = (
+                f'Quartz captured an empty {width}x{height} image for window "{self._window_name}". '
+                "Make sure the window is visible and not minimized."
+            )
             return False, None
         bytes_per_row = Quartz.CGImageGetBytesPerRow(image)
         data = Quartz.CGDataProviderCopyData(Quartz.CGImageGetDataProvider(image))
@@ -1205,6 +1266,9 @@ def track_markers(
         while True:
             ok, frame = capture.read()
             if not ok:
+                detail = getattr(capture, "last_error", "")
+                if detail:
+                    raise RuntimeError(f"Failed to read a frame from window capture: {detail}")
                 raise RuntimeError("Failed to read a frame from the camera")
             if territory_owner is None:
                 territory_owner = np.full(frame.shape[:2], UNOWNED_TERRITORY, dtype=np.int16)
@@ -1359,6 +1423,9 @@ def track_markers(
 
 def main() -> None:
     args = parse_args()
+    if args.list_windows:
+        list_windows()
+        return
     if args.list_cameras:
         list_cameras(args.camera_probe_limit, args.width, args.height)
         return

@@ -71,8 +71,10 @@ placement mode is active.
 Useful options:
 
 - `--list-cameras`: probe local camera indexes and exit.
+- `--list-windows`: list capturable macOS windows for `--window-capture`.
 - `--camera-index 1`: use another camera.
 - `--camera-source <url-or-file>`: use an IP/RTSP/HTTP camera URL or video file.
+- `--window-capture "Desk View"`: capture a named macOS window instead of a camera.
 - `--width 1920 --height 1080`: request a different capture resolution.
 - `--dictionary 5x5_100`: use another ArUco dictionary.
 - `--trajectory-length 1200`: keep more path history per robot.
@@ -105,6 +107,16 @@ publishes an HTTP, RTSP, or similar stream, then pass that stream URL:
 
 ```sh
 uv run python hello.py --camera-source http://IPHONE_ADDRESS:PORT/video --robot-ids 0 1 --trajectory-thickness 96
+```
+
+To capture a macOS camera-preview window such as Desk View, first grant the
+terminal or IDE that runs `uv` permission in **System Settings > Privacy &
+Security > Screen & System Audio Recording**. Then list visible windows and
+use the exposed owner or window name:
+
+```sh
+uv run python qt_app.py --list-windows
+uv run python qt_app.py --window-capture "Desk View" --robot-ids 0 1
 ```
 
 For an overhead camera, `x`, `y`, and territory sizes are measured in camera

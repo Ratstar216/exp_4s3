@@ -38,6 +38,7 @@ from .tracker import (
     TrackerSnapshot,
     generate_marker,
     list_cameras,
+    list_windows,
     manual_draw_marker_id,
     manual_draw_tool,
     marker_color,
@@ -747,6 +748,9 @@ class MainWindow(QMainWindow):
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.list_windows:
+        list_windows()
+        return 0
     if args.list_cameras:
         list_cameras(args.camera_probe_limit, args.width, args.height)
         return 0
