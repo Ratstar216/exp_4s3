@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import signal
 import sys
 from contextlib import suppress
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QSignalBlocker, QRectF, QThread, Qt, Signal
+from PySide6.QtCore import QSignalBlocker, QRectF, QThread, QTimer, Qt, Signal
 from PySide6.QtGui import (
     QAction,
     QCloseEvent,
@@ -460,6 +461,7 @@ class MainWindow(QMainWindow):
     def __init__(self, args) -> None:
         super().__init__()
         self._args = args
+        self._shutting_down = False
         self._player_ids = resolve_player_ids(args)
         self._controller = TrackerController()
         self._worker = TrackerWorker(args, self._controller)
@@ -727,13 +729,19 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "Tracker Error", message)
         self.close()
 
-    def closeEvent(self, event: QCloseEvent) -> None:
+    def shutdown(self) -> None:
+        if self._shutting_down:
+            return
+        self._shutting_down = True
         with suppress(RuntimeError):
             self._worker.stop()
         if self._spectator_window.isVisible():
             self._spectator_window.close()
         if self._projector_window.isVisible():
             self._projector_window.close()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.shutdown()
         super().closeEvent(event)
 
 
@@ -748,8 +756,17 @@ def main(argv: list[str] | None = None) -> int:
 
     app = QApplication(sys.argv if argv is None else ["hello.py", *argv])
     window = MainWindow(args)
+    app.aboutToQuit.connect(window.shutdown)
+    signal.signal(signal.SIGINT, lambda _signum, _frame: app.quit())
+    signal_timer = QTimer()
+    signal_timer.timeout.connect(lambda: None)
+    signal_timer.start(100)
     window.show()
-    return app.exec()
+    try:
+        return app.exec()
+    except KeyboardInterrupt:
+        window.shutdown()
+        return 130
 
 
 if __name__ == "__main__":
