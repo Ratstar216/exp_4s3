@@ -1310,7 +1310,7 @@ def track_markers(
                 draw_marker_details(frame, marker_corners, marker_id, fps, size_multiplier)
             draw_calibration_guides(frame, calibration)
 
-            projection_visualization = np.zeros_like(frame)
+            projection_visualization = np.full_like(frame, 255)
             render_projector_territory(
                 projection_visualization,
                 territory_owner,

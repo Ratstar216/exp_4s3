@@ -54,11 +54,12 @@ class VideoCanvas(QWidget):
     left_released = Signal(int, int)
     right_pressed = Signal(int, int)
 
-    def __init__(self) -> None:
+    def __init__(self, bg_color: str = "#0c1118") -> None:
         super().__init__()
         self._image: QImage | None = None
         self._rgb_frame: np.ndarray | None = None
         self._left_drag_active = False
+        self._bg_color = QColor(bg_color)
         self.setMinimumSize(960, 540)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.setMouseTracking(True)
@@ -95,7 +96,7 @@ class VideoCanvas(QWidget):
 
     def paintEvent(self, _event: QPaintEvent) -> None:
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor("#0c1118"))
+        painter.fillRect(self.rect(), self._bg_color)
         target = self._target_rect()
         if self._image is None or target is None:
             painter.setPen(QColor("#9fb0c0"))
@@ -415,12 +416,12 @@ class ProjectorWindow(QMainWindow):
         self.setStyleSheet(
             """
             QMainWindow, QWidget {
-                background: #000000;
+                background: #ffffff;
             }
             """
         )
 
-        self._video = VideoCanvas()
+        self._video = VideoCanvas(bg_color="#ffffff")
         self._video.setMinimumSize(1, 1)
         self.setCentralWidget(self._video)
 
