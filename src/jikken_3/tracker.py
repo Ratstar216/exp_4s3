@@ -549,6 +549,25 @@ def render_territory_overlay(
     frame[mask] = blended[mask]
 
 
+def render_projector_territory(
+    frame: np.ndarray,
+    territory_owner: np.ndarray,
+    marker_ids: set[int] | None,
+    field_mask: np.ndarray | None,
+) -> None:
+    if marker_ids:
+        ids = marker_ids
+    else:
+        ids = {int(marker_id) for marker_id in np.unique(territory_owner)}
+    for marker_id in ids:
+        if marker_id == UNOWNED_TERRITORY:
+            continue
+        mask = territory_owner == marker_id
+        if field_mask is not None:
+            mask &= field_mask > 0
+        frame[mask] = marker_color(marker_id)
+
+
 def load_item_sprite(path: Path) -> np.ndarray:
     sprite = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if sprite is None:
@@ -1286,11 +1305,36 @@ def track_markers(
                 args.trajectory_thickness,
                 filled_loops,
             )
-            projection_visualization = frame.copy()
             draw_support_items(frame, support_items, mushroom_sprite)
             for marker_corners, marker_id, size_multiplier in visible_markers:
                 draw_marker_details(frame, marker_corners, marker_id, fps, size_multiplier)
             draw_calibration_guides(frame, calibration)
+
+            projection_visualization = np.zeros_like(frame)
+            render_projector_territory(
+                projection_visualization,
+                territory_owner,
+                marker_ids,
+                field_mask,
+            )
+            draw_trajectories(
+                projection_visualization,
+                paint_segments,
+                trajectories,
+                args.trajectory_thickness,
+                filled_loops,
+            )
+            draw_support_items(projection_visualization, support_items, mushroom_sprite)
+            for marker_corners, marker_id, size_multiplier in visible_markers:
+                draw_marker_details(
+                    projection_visualization,
+                    marker_corners,
+                    marker_id,
+                    fps,
+                    size_multiplier,
+                )
+            draw_calibration_guides(projection_visualization, calibration)
+
             snapshot = TrackerSnapshot(
                 scores=dict(scores),
                 total_area=total_area,
