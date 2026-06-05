@@ -10,6 +10,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage, QPainter
+from PySide6.QtSvg import QSvgRenderer
 
 
 DEFAULT_MARKER_COLORS = [
@@ -30,7 +33,7 @@ MIN_LOOP_GAP = 8  # minimum old segments skipped when checking for self-intersec
 DEFAULT_OUTLINE_THICKNESS = 2
 DEFAULT_MARKER_RADIUS = 5
 DEFAULT_ARROW_THICKNESS = 2
-MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mushroom_abstract.png"
+MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mashroom_2.svg"
 
 ARUCO_DICTIONARIES = {
     "4x4_50": cv2.aruco.DICT_4X4_50,
@@ -568,7 +571,33 @@ def render_projector_territory(
         frame[mask] = marker_color(marker_id)
 
 
+def load_svg_item_sprite(path: Path) -> np.ndarray:
+    renderer = QSvgRenderer(str(path))
+    if not renderer.isValid():
+        raise RuntimeError(f"Failed to load support item SVG sprite: {path}")
+
+    default_size = renderer.defaultSize()
+    width = max(1, default_size.width())
+    height = max(1, default_size.height())
+    image = QImage(width, height, QImage.Format.Format_RGBA8888)
+    image.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(image)
+    renderer.render(painter)
+    painter.end()
+
+    bytes_per_line = image.bytesPerLine()
+    buffer = image.constBits()
+    rgba = np.frombuffer(buffer, dtype=np.uint8).reshape((height, bytes_per_line))
+    rgba = rgba[:, : width * 4].reshape((height, width, 4))
+    bgra = rgba[:, :, [2, 1, 0, 3]]
+    return np.ascontiguousarray(bgra)
+
+
 def load_item_sprite(path: Path) -> np.ndarray:
+    if path.suffix.lower() == ".svg":
+        return load_svg_item_sprite(path)
+
     sprite = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if sprite is None:
         raise RuntimeError(f"Failed to load support item sprite: {path}")
