@@ -22,6 +22,10 @@ DEFAULT_MARKER_COLORS = [
     (255, 255, 0),
     (0, 0, 255),
 ]
+PLAYER_NAMES = {
+    0: "Rapiro",
+    1: "Pikko robo",
+}
 UNOWNED_TERRITORY = -1
 ITEM_MUSHROOM = "mushroom"
 TOOL_MUSHROOM = ITEM_MUSHROOM
@@ -353,6 +357,10 @@ def marker_color(marker_id: int) -> tuple[int, int, int]:
     return DEFAULT_MARKER_COLORS[marker_id % len(DEFAULT_MARKER_COLORS)]
 
 
+def player_name(marker_id: int) -> str:
+    return PLAYER_NAMES.get(marker_id, f"P{marker_id}")
+
+
 def order_quad_points(points: list[tuple[int, int]]) -> list[tuple[int, int]]:
     pts = np.array(points, dtype=np.float32)
     sums = pts.sum(axis=1)
@@ -391,8 +399,8 @@ def winner_banner_text(scores: dict[int, int]) -> str:
     if not winners:
         return "NO WINNER"
     if len(winners) == 1:
-        return f"WINNER P{winners[0]}"
-    joined = " / ".join(f"P{marker_id}" for marker_id in winners)
+        return f"WINNER {player_name(winners[0])}"
+    joined = " / ".join(player_name(marker_id) for marker_id in winners)
     return f"DRAW {joined}"
 
 
@@ -941,7 +949,7 @@ def tool_label(tool: str | None) -> str:
         return "Mushroom placement"
     marker_id = manual_draw_marker_id(tool)
     if marker_id is not None:
-        return f"Manual draw P{marker_id}"
+        return f"Manual draw {player_name(marker_id)}"
     return tool
 
 
