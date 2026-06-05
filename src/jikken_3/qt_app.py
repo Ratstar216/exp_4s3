@@ -240,6 +240,7 @@ class TerritoryBarWidget(QWidget):
 
 class TrackerWorker(QThread):
     frame_ready = Signal(object, object)
+    spectator_frame_ready = Signal(object, object)
     projection_frame_ready = Signal(object, object)
     failed = Signal(str)
 
@@ -254,6 +255,7 @@ class TrackerWorker(QThread):
                 self._args,
                 controller=self._controller,
                 frame_callback=self._publish_frame,
+                spectator_frame_callback=self._publish_spectator_frame,
                 projection_frame_callback=self._publish_projection_frame,
             )
         except Exception as exc:
@@ -261,6 +263,9 @@ class TrackerWorker(QThread):
 
     def _publish_frame(self, frame: np.ndarray, snapshot: TrackerSnapshot) -> None:
         self.frame_ready.emit(frame.copy(), snapshot)
+
+    def _publish_spectator_frame(self, frame: np.ndarray, snapshot: TrackerSnapshot) -> None:
+        self.spectator_frame_ready.emit(frame.copy(), snapshot)
 
     def _publish_projection_frame(
         self,
@@ -471,7 +476,7 @@ class MainWindow(QMainWindow):
         self._worker.frame_ready.connect(self._apply_frame_update)
         self._worker.failed.connect(self._show_worker_error)
         self._spectator_window = SpectatorWindow()
-        self._worker.frame_ready.connect(self._spectator_window.apply_frame_update)
+        self._worker.spectator_frame_ready.connect(self._spectator_window.apply_frame_update)
         self._spectator_window.closed.connect(self._on_spectator_closed)
         self._projector_window = ProjectorWindow()
         self._worker.projection_frame_ready.connect(self._projector_window.apply_frame_update)
