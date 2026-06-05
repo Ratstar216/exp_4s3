@@ -30,7 +30,7 @@ MIN_LOOP_GAP = 8  # minimum old segments skipped when checking for self-intersec
 DEFAULT_OUTLINE_THICKNESS = 2
 DEFAULT_MARKER_RADIUS = 5
 DEFAULT_ARROW_THICKNESS = 2
-MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mushroom.png"
+MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mushroom_abstract.png"
 
 ARUCO_DICTIONARIES = {
     "4x4_50": cv2.aruco.DICT_4X4_50,
@@ -572,9 +572,9 @@ def load_item_sprite(path: Path) -> np.ndarray:
     sprite = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if sprite is None:
         raise RuntimeError(f"Failed to load support item sprite: {path}")
-    if sprite.ndim != 3 or sprite.shape[2] != 3:
+    if sprite.ndim != 3 or sprite.shape[2] not in (3, 4):
         raise RuntimeError(
-            f"Expected a 3-channel support item sprite image, got shape {sprite.shape!r}: {path}"
+            f"Expected a 3- or 4-channel support item sprite image, got shape {sprite.shape!r}: {path}"
         )
     return sprite
 
@@ -606,14 +606,27 @@ def draw_sprite(
     sprite_x1 = sprite_x0 + (frame_x1 - frame_x0)
     sprite_y1 = sprite_y0 + (frame_y1 - frame_y0)
     sprite_region = resized[sprite_y0:sprite_y1, sprite_x0:sprite_x1]
+    frame_region = frame[frame_y0:frame_y1, frame_x0:frame_x1]
 
-    # Treat the near-white background in the source PNG as transparent.
-    alpha_mask = np.any(sprite_region < 245, axis=2)
-    if not np.any(alpha_mask):
+    if sprite_region.shape[2] == 4:
+        sprite_bgr = sprite_region[:, :, :3]
+        alpha = sprite_region[:, :, 3]
+        alpha_mask = alpha > 0
+        if not np.any(alpha_mask):
+            return
+
+        alpha_fraction = alpha[alpha_mask, np.newaxis].astype(np.float32) / 255.0
+        blended = (
+            sprite_bgr[alpha_mask].astype(np.float32) * alpha_fraction
+            + frame_region[alpha_mask].astype(np.float32) * (1.0 - alpha_fraction)
+        )
+        frame_region[alpha_mask] = np.clip(blended, 0, 255).astype(np.uint8)
         return
 
-    frame_region = frame[frame_y0:frame_y1, frame_x0:frame_x1]
-    frame_region[alpha_mask] = sprite_region[alpha_mask]
+    # Treat the near-white background in older 3-channel source PNGs as transparent.
+    alpha_mask = np.any(sprite_region < 245, axis=2)
+    if np.any(alpha_mask):
+        frame_region[alpha_mask] = sprite_region[alpha_mask]
 
 
 def draw_support_items(
