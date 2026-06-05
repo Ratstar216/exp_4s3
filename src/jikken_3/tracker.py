@@ -669,6 +669,25 @@ def draw_calibration_guides(frame: np.ndarray, calibration: CalibrationState) ->
             cv2.LINE_AA,
         )
 
+
+def warp_to_camera_calibration(
+    frame: np.ndarray,
+    camera_points: list[tuple[int, int]],
+    border_value: tuple[int, int, int],
+) -> np.ndarray:
+    h, w = frame.shape[:2]
+    src = np.array(order_quad_points(camera_points), dtype=np.float32)
+    dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+    transform = cv2.getPerspectiveTransform(src, dst)
+    return cv2.warpPerspective(
+        frame,
+        transform,
+        (w, h),
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=border_value,
+    )
+
+
 def target_ids(args: argparse.Namespace) -> set[int] | None:
     ids = set(args.target_id or [])
     if args.robot_ids:
@@ -1059,12 +1078,12 @@ def should_use_marker(marker_id: int, marker_ids: set[int] | None) -> bool:
     return marker_ids is None or marker_id in marker_ids
 
 
-
 def track_markers(
     args: argparse.Namespace,
     *,
     controller: TrackerController | None = None,
     frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
+    spectator_frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
     projection_frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
 ) -> None:
     aruco_dictionary = get_aruco_dictionary(args.dictionary)
@@ -1328,15 +1347,18 @@ def track_markers(
                 )
             draw_calibration_guides(projection_visualization, calibration)
 
-            # Warp projector output to fit the manually calibrated field rectangle
+            spectator_visualization = frame.copy()
+            # Warp calibrated outputs to show only the manually selected camera field.
             if len(calibration.camera_points) == 4:
-                h, w = projection_visualization.shape[:2]
-                src = np.array(order_quad_points(calibration.camera_points), dtype=np.float32)
-                dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
-                H = cv2.getPerspectiveTransform(src, dst)
-                projection_visualization = cv2.warpPerspective(
-                    projection_visualization, H, (w, h),
-                    borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255),
+                spectator_visualization = warp_to_camera_calibration(
+                    spectator_visualization,
+                    calibration.camera_points,
+                    (0, 0, 0),
+                )
+                projection_visualization = warp_to_camera_calibration(
+                    projection_visualization,
+                    calibration.camera_points,
+                    (255, 255, 255),
                 )
 
             snapshot = TrackerSnapshot(
@@ -1352,6 +1374,8 @@ def track_markers(
             last_visualization = frame.copy()
             if frame_callback is not None:
                 frame_callback(last_visualization, snapshot)
+            if spectator_frame_callback is not None:
+                spectator_frame_callback(spectator_visualization, snapshot)
             if projection_frame_callback is not None:
                 projection_frame_callback(projection_visualization, snapshot)
     except KeyboardInterrupt:
