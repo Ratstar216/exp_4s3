@@ -346,12 +346,6 @@ def marker_center(corners: np.ndarray) -> tuple[int, int]:
     return int(center[0]), int(center[1])
 
 
-def marker_heading_degrees(corners: np.ndarray) -> float:
-    top_left, top_right = corners.reshape(4, 2)[:2]
-    dx, dy = top_right - top_left
-    return math.degrees(math.atan2(float(dy), float(dx)))
-
-
 def marker_color(marker_id: int) -> tuple[int, int, int]:
     return DEFAULT_MARKER_COLORS[marker_id % len(DEFAULT_MARKER_COLORS)]
 
@@ -884,13 +878,11 @@ def draw_marker_details(
     frame: np.ndarray,
     corners: np.ndarray,
     marker_id: int,
-    fps: float,
     size_multiplier: float,
 ) -> None:
     center_x, center_y = marker_center(corners)
-    heading = marker_heading_degrees(corners)
     points = corners.reshape(4, 2).astype(int)
-    top_left, top_right, bottom_right, bottom_left = points
+    top_left, top_right = points[:2]
     color = marker_color(marker_id)
 
     outline_thickness = max(
@@ -914,19 +906,6 @@ def draw_marker_details(
         color,
         arrow_thickness,
         tipLength=0.25,
-    )
-
-    label = f"id={marker_id} x={center_x} y={center_y} heading={heading:.1f} fps={fps:.1f}"
-    text_origin = (int(bottom_left[0]), int(bottom_left[1]) + 24)
-    cv2.putText(
-        frame,
-        label,
-        text_origin,
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.55,
-        color,
-        2,
-        cv2.LINE_AA,
     )
 
 
@@ -1322,7 +1301,7 @@ def track_markers(
             )
             draw_support_items(frame, support_items, mushroom_sprite)
             for marker_corners, marker_id, size_multiplier in visible_markers:
-                draw_marker_details(frame, marker_corners, marker_id, fps, size_multiplier)
+                draw_marker_details(frame, marker_corners, marker_id, size_multiplier)
             draw_calibration_guides(frame, calibration)
 
             projection_visualization = np.full_like(frame, 255)
@@ -1345,7 +1324,6 @@ def track_markers(
                     projection_visualization,
                     marker_corners,
                     marker_id,
-                    fps,
                     size_multiplier,
                 )
             draw_calibration_guides(projection_visualization, calibration)
