@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -551,7 +552,20 @@ class MainWindow(QMainWindow):
         side_panel = QFrame()
         side_panel.setObjectName("sidePanel")
         side_panel.setFixedWidth(320)
-        panel_layout = QVBoxLayout(side_panel)
+        side_outer_layout = QVBoxLayout(side_panel)
+        side_outer_layout.setContentsMargins(0, 0, 0, 0)
+        side_outer_layout.setSpacing(0)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
+        side_outer_layout.addWidget(scroll_area)
+
+        scroll_content = QWidget()
+        scroll_area.setWidget(scroll_content)
+        panel_layout = QVBoxLayout(scroll_content)
         panel_layout.setContentsMargins(20, 20, 20, 20)
         panel_layout.setSpacing(16)
 
