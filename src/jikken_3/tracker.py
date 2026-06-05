@@ -13,8 +13,8 @@ import numpy as np
 
 
 DEFAULT_MARKER_COLORS = [
-    (100, 20, 255),    # marker 0: neon pink  RGB(255, 20, 100)
-    (10, 255, 50),     # marker 1: lime green RGB(50, 255, 10)
+    (241, 102, 130),    # marker 0: neon pink  RGB(255, 20, 100)
+    (0, 157, 91),     # marker 1: lime green RGB(50, 255, 10)
     (0, 180, 255),
     (255, 0, 255),
     (255, 255, 0),
