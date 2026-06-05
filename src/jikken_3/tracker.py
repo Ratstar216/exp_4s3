@@ -16,8 +16,8 @@ from PySide6.QtSvg import QSvgRenderer
 
 
 DEFAULT_MARKER_COLORS = [
-    (100, 20, 255),    # marker 0: neon pink  RGB(255, 20, 100)
-    (10, 255, 50),     # marker 1: lime green RGB(50, 255, 10)
+    (100, 20, 255),  # marker 0: neon pink  RGB(255, 20, 100)
+    (10, 255, 50),  # marker 1: lime green RGB(50, 255, 10)
     (0, 180, 255),
     (255, 0, 255),
     (255, 255, 0),
@@ -33,6 +33,7 @@ MIN_LOOP_GAP = 8  # minimum old segments skipped when checking for self-intersec
 DEFAULT_OUTLINE_THICKNESS = 2
 DEFAULT_MARKER_RADIUS = 5
 DEFAULT_ARROW_THICKNESS = 2
+
 MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mashroom_2.svg"
 
 ARUCO_DICTIONARIES = {
@@ -290,7 +291,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--mushroom-size-multiplier",
         type=float,
-        default=1.6,
+        default=3,
         help="Size multiplier applied while a mushroom boost is active.",
     )
     args = parser.parse_args(argv)
@@ -349,12 +350,6 @@ def marker_center(corners: np.ndarray) -> tuple[int, int]:
     return int(center[0]), int(center[1])
 
 
-def marker_heading_degrees(corners: np.ndarray) -> float:
-    top_left, top_right = corners.reshape(4, 2)[:2]
-    dx, dy = top_right - top_left
-    return math.degrees(math.atan2(float(dy), float(dx)))
-
-
 def marker_color(marker_id: int) -> tuple[int, int, int]:
     return DEFAULT_MARKER_COLORS[marker_id % len(DEFAULT_MARKER_COLORS)]
 
@@ -372,7 +367,9 @@ def order_quad_points(points: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return [(int(x), int(y)) for x, y in ordered]
 
 
-def build_field_mask(frame_shape: tuple[int, int, int], points: list[tuple[int, int]]) -> np.ndarray:
+def build_field_mask(
+    frame_shape: tuple[int, int, int], points: list[tuple[int, int]]
+) -> np.ndarray:
     if len(points) != 4:
         raise ValueError("field mask requires four points")
     mask = np.zeros(frame_shape[:2], dtype=np.uint8)
@@ -400,7 +397,9 @@ def winner_banner_text(scores: dict[int, int]) -> str:
     return f"DRAW {joined}"
 
 
-def active_size_multiplier(marker_id: int, buffs: dict[int, BuffState], now: float) -> float:
+def active_size_multiplier(
+    marker_id: int, buffs: dict[int, BuffState], now: float
+) -> float:
     buff = buffs.get(marker_id)
     if buff is None:
         return 1.0
@@ -411,12 +410,16 @@ def active_size_multiplier(marker_id: int, buffs: dict[int, BuffState], now: flo
 
 
 def prune_expired_buffs(buffs: dict[int, BuffState], now: float) -> None:
-    expired_ids = [marker_id for marker_id, buff in buffs.items() if buff.expires_at <= now]
+    expired_ids = [
+        marker_id for marker_id, buff in buffs.items() if buff.expires_at <= now
+    ]
     for marker_id in expired_ids:
         buffs.pop(marker_id, None)
 
 
-def remove_nearest_item(items: list[SupportItem], point: tuple[int, int], max_distance: float) -> None:
+def remove_nearest_item(
+    items: list[SupportItem], point: tuple[int, int], max_distance: float
+) -> None:
     if not items:
         return
     px, py = point
@@ -441,7 +444,9 @@ def set_calibration_mode(calibration: CalibrationState, mode: str | None) -> Non
         calibration.projector_points.clear()
 
 
-def active_calibration_points(calibration: CalibrationState) -> list[tuple[int, int]] | None:
+def active_calibration_points(
+    calibration: CalibrationState,
+) -> list[tuple[int, int]] | None:
     if calibration.mode == CALIBRATION_CAMERA:
         return calibration.camera_points
     if calibration.mode == CALIBRATION_PROJECTOR:
@@ -449,7 +454,9 @@ def active_calibration_points(calibration: CalibrationState) -> list[tuple[int, 
     return None
 
 
-def add_calibration_point(calibration: CalibrationState, point: tuple[int, int]) -> None:
+def add_calibration_point(
+    calibration: CalibrationState, point: tuple[int, int]
+) -> None:
     points = active_calibration_points(calibration)
     if points is None:
         return
@@ -495,6 +502,7 @@ def draw_manual_segment(
 ) -> None:
     paint_segments.append((marker_id, start, end, thickness))
     paint_territory(territory_owner, marker_id, start, end, thickness, field_mask)
+
 
 def check_item_pickups(
     support_items: list[SupportItem],
@@ -617,7 +625,9 @@ def draw_sprite(
     target_height = max(12, radius * 2)
     scale = target_height / sprite.shape[0]
     target_width = max(12, int(round(sprite.shape[1] * scale)))
-    resized = cv2.resize(sprite, (target_width, target_height), interpolation=cv2.INTER_AREA)
+    resized = cv2.resize(
+        sprite, (target_width, target_height), interpolation=cv2.INTER_AREA
+    )
 
     x0 = center[0] - target_width // 2
     y0 = center[1] - target_height // 2
@@ -645,9 +655,10 @@ def draw_sprite(
             return
 
         alpha_fraction = alpha[alpha_mask, np.newaxis].astype(np.float32) / 255.0
-        blended = (
-            sprite_bgr[alpha_mask].astype(np.float32) * alpha_fraction
-            + frame_region[alpha_mask].astype(np.float32) * (1.0 - alpha_fraction)
+        blended = sprite_bgr[alpha_mask].astype(
+            np.float32
+        ) * alpha_fraction + frame_region[alpha_mask].astype(np.float32) * (
+            1.0 - alpha_fraction
         )
         frame_region[alpha_mask] = np.clip(blended, 0, 255).astype(np.uint8)
         return
@@ -703,6 +714,47 @@ def draw_calibration_guides(frame: np.ndarray, calibration: CalibrationState) ->
             2,
             cv2.LINE_AA,
         )
+
+
+def warp_to_camera_calibration(
+    frame: np.ndarray,
+    camera_points: list[tuple[int, int]],
+    border_value: tuple[int, int, int],
+    output_size: tuple[int, int] | None = None,
+) -> np.ndarray:
+    src = np.array(order_quad_points(camera_points), dtype=np.float32)
+    if output_size is None:
+        h, w = frame.shape[:2]
+    else:
+        w, h = output_size
+    dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
+    transform = cv2.getPerspectiveTransform(src, dst)
+    return cv2.warpPerspective(
+        frame,
+        transform,
+        (w, h),
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=border_value,
+    )
+
+
+def calibrated_camera_output_size(
+    camera_points: list[tuple[int, int]],
+) -> tuple[int, int]:
+    top_left, top_right, bottom_right, bottom_left = order_quad_points(camera_points)
+    top_width = math.hypot(top_right[0] - top_left[0], top_right[1] - top_left[1])
+    bottom_width = math.hypot(
+        bottom_right[0] - bottom_left[0], bottom_right[1] - bottom_left[1]
+    )
+    right_height = math.hypot(
+        bottom_right[0] - top_right[0], bottom_right[1] - top_right[1]
+    )
+    left_height = math.hypot(bottom_left[0] - top_left[0], bottom_left[1] - top_left[1])
+    return (
+        max(1, int(round(max(top_width, bottom_width)))),
+        max(1, int(round(max(right_height, left_height)))),
+    )
+
 
 def target_ids(args: argparse.Namespace) -> set[int] | None:
     ids = set(args.target_id or [])
@@ -765,7 +817,9 @@ def detect_loop(
     prev = trajectory[-1]
     # Iterate from most-recent eligible segment downward to find the smallest loop first.
     for i in range(n - 1 - MIN_LOOP_GAP, -1, -1):
-        result = _segments_intersect_params(prev, new_point, trajectory[i], trajectory[i + 1])
+        result = _segments_intersect_params(
+            prev, new_point, trajectory[i], trajectory[i + 1]
+        )
         if result is not None:
             _t, s = result
             ix = (
@@ -818,18 +872,26 @@ def update_trajectory(
             start = trajectory[-1]
             loop = detect_loop(trajectory, point)
             paint_segments.append((marker_id, start, point, thickness))
-            paint_territory(territory_owner, marker_id, start, point, thickness, field_mask)
+            paint_territory(
+                territory_owner, marker_id, start, point, thickness, field_mask
+            )
             if loop is not None and filled_loops is not None:
                 intersection, loop_start_index = loop
                 fill_loop_area(
-                    territory_owner, marker_id, intersection,
-                    trajectory, loop_start_index, field_mask,
+                    territory_owner,
+                    marker_id,
+                    intersection,
+                    trajectory,
+                    loop_start_index,
+                    field_mask,
                     filled_loops,
                 )
         trajectory.append(point)
         if len(trajectory) > max_length:
             del trajectory[: len(trajectory) - max_length]
-        total_segments = sum(max(0, len(points) - 1) for points in trajectories.values())
+        total_segments = sum(
+            max(0, len(points) - 1) for points in trajectories.values()
+        )
         if len(paint_segments) > total_segments:
             del paint_segments[: len(paint_segments) - total_segments]
 
@@ -865,7 +927,9 @@ def territory_scores(
     return dict(sorted(scores.items()))
 
 
-def territory_total_area(territory_owner: np.ndarray, field_mask: np.ndarray | None) -> int:
+def territory_total_area(
+    territory_owner: np.ndarray, field_mask: np.ndarray | None
+) -> int:
     if field_mask is not None:
         return int(np.count_nonzero(field_mask))
     return int(territory_owner.size)
@@ -889,8 +953,12 @@ def draw_trajectories(
     thickness: int,
     filled_loops: list[tuple[int, list[tuple[int, int]]]] | None = None,
 ) -> None:
-    for loop_marker_id, polygon_points in (filled_loops or []):
-        cv2.fillPoly(frame, [np.array(polygon_points, dtype=np.int32)], marker_color(loop_marker_id))
+    for loop_marker_id, polygon_points in filled_loops or []:
+        cv2.fillPoly(
+            frame,
+            [np.array(polygon_points, dtype=np.int32)],
+            marker_color(loop_marker_id),
+        )
 
     for marker_id, start, end, segment_thickness in paint_segments:
         cv2.line(
@@ -913,13 +981,11 @@ def draw_marker_details(
     frame: np.ndarray,
     corners: np.ndarray,
     marker_id: int,
-    fps: float,
     size_multiplier: float,
 ) -> None:
     center_x, center_y = marker_center(corners)
-    heading = marker_heading_degrees(corners)
     points = corners.reshape(4, 2).astype(int)
-    top_left, top_right, bottom_right, bottom_left = points
+    top_left, top_right = points[:2]
     color = marker_color(marker_id)
 
     outline_thickness = max(
@@ -934,7 +1000,9 @@ def draw_marker_details(
         DEFAULT_ARROW_THICKNESS,
         int(DEFAULT_ARROW_THICKNESS * size_multiplier),
     )
-    cv2.polylines(frame, [points], isClosed=True, color=color, thickness=outline_thickness)
+    cv2.polylines(
+        frame, [points], isClosed=True, color=color, thickness=outline_thickness
+    )
     cv2.circle(frame, (center_x, center_y), marker_radius, color, -1)
     cv2.arrowedLine(
         frame,
@@ -943,19 +1011,6 @@ def draw_marker_details(
         color,
         arrow_thickness,
         tipLength=0.25,
-    )
-
-    label = f"id={marker_id} x={center_x} y={center_y} heading={heading:.1f} fps={fps:.1f}"
-    text_origin = (int(bottom_left[0]), int(bottom_left[1]) + 24)
-    cv2.putText(
-        frame,
-        label,
-        text_origin,
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.55,
-        color,
-        2,
-        cv2.LINE_AA,
     )
 
 
@@ -1042,8 +1097,10 @@ class WindowCapture:
 
     def _find_window_id(self) -> int | None:
         import Quartz
+
         windows = Quartz.CGWindowListCopyWindowInfo(
-            Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+            Quartz.kCGWindowListOptionOnScreenOnly
+            | Quartz.kCGWindowListExcludeDesktopElements,
             Quartz.kCGNullWindowID,
         )
         query = self._window_name.lower()
@@ -1059,6 +1116,7 @@ class WindowCapture:
 
     def read(self) -> tuple[bool, np.ndarray | None]:
         import Quartz
+
         window_id = self._find_window_id()
         if window_id is None:
             return False, None
@@ -1109,13 +1167,15 @@ def should_use_marker(marker_id: int, marker_ids: set[int] | None) -> bool:
     return marker_ids is None or marker_id in marker_ids
 
 
-
 def track_markers(
     args: argparse.Namespace,
     *,
     controller: TrackerController | None = None,
     frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
-    projection_frame_callback: Callable[[np.ndarray, TrackerSnapshot], None] | None = None,
+    spectator_frame_callback: Callable[[np.ndarray, TrackerSnapshot], None]
+    | None = None,
+    projection_frame_callback: Callable[[np.ndarray, TrackerSnapshot], None]
+    | None = None,
 ) -> None:
     aruco_dictionary = get_aruco_dictionary(args.dictionary)
     detector = create_detector(aruco_dictionary)
@@ -1176,7 +1236,9 @@ def track_markers(
 
         if interaction_state.active_tool == TOOL_MUSHROOM:
             if button == "left" and phase == "press":
-                support_items.append(SupportItem(ITEM_MUSHROOM, point, args.item_radius))
+                support_items.append(
+                    SupportItem(ITEM_MUSHROOM, point, args.item_radius)
+                )
             elif button == "right" and phase == "press":
                 remove_nearest_item(support_items, point, args.item_radius * 1.5)
             return
@@ -1220,7 +1282,9 @@ def track_markers(
         if command.name == "stop":
             return False
         if command.name == "set_tool_mode":
-            set_active_tool(interaction_state, payload if isinstance(payload, str) else None)
+            set_active_tool(
+                interaction_state, payload if isinstance(payload, str) else None
+            )
             return True
         if command.name == "clear_trajectories":
             clear_trajectories()
@@ -1244,15 +1308,20 @@ def track_markers(
                 handle_pointer_event(phase, button, (x, y))
             return True
         return True
+
     try:
         while True:
             ok, frame = capture.read()
             if not ok:
                 raise RuntimeError("Failed to read a frame from the camera")
             if territory_owner is None:
-                territory_owner = np.full(frame.shape[:2], UNOWNED_TERRITORY, dtype=np.int16)
+                territory_owner = np.full(
+                    frame.shape[:2], UNOWNED_TERRITORY, dtype=np.int16
+                )
             elif frame.shape[:2] != territory_owner.shape:
-                frame = cv2.resize(frame, (territory_owner.shape[1], territory_owner.shape[0]))
+                frame = cv2.resize(
+                    frame, (territory_owner.shape[1], territory_owner.shape[0])
+                )
 
             if controller is not None:
                 keep_running = True
@@ -1284,7 +1353,9 @@ def track_markers(
             prune_expired_buffs(active_buffs, now)
             remaining_seconds = None
             if args.game_duration > 0:
-                remaining_seconds = max(0.0, args.game_duration - (now - game_start_time))
+                remaining_seconds = max(
+                    0.0, args.game_duration - (now - game_start_time)
+                )
             updates_enabled = not game_over
             if remaining_seconds is not None and remaining_seconds <= 0:
                 updates_enabled = False
@@ -1296,7 +1367,9 @@ def track_markers(
                         continue
 
                     center_x, center_y = marker_center(marker_corners)
-                    size_multiplier = active_size_multiplier(marker_id, active_buffs, now)
+                    size_multiplier = active_size_multiplier(
+                        marker_id, active_buffs, now
+                    )
                     if updates_enabled:
                         thickness = max(
                             MIN_TRAJECTORY_THICKNESS,
@@ -1351,7 +1424,7 @@ def track_markers(
             )
             draw_support_items(frame, support_items, mushroom_sprite)
             for marker_corners, marker_id, size_multiplier in visible_markers:
-                draw_marker_details(frame, marker_corners, marker_id, fps, size_multiplier)
+                draw_marker_details(frame, marker_corners, marker_id, size_multiplier)
             draw_calibration_guides(frame, calibration)
 
             projection_visualization = np.full_like(frame, 255)
@@ -1374,20 +1447,23 @@ def track_markers(
                     projection_visualization,
                     marker_corners,
                     marker_id,
-                    fps,
                     size_multiplier,
                 )
             draw_calibration_guides(projection_visualization, calibration)
 
-            # Warp projector output to fit the manually calibrated field rectangle
+            spectator_visualization = frame.copy()
+            # Warp calibrated outputs to show only the manually selected camera field.
             if len(calibration.camera_points) == 4:
-                h, w = projection_visualization.shape[:2]
-                src = np.array(order_quad_points(calibration.camera_points), dtype=np.float32)
-                dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
-                H = cv2.getPerspectiveTransform(src, dst)
-                projection_visualization = cv2.warpPerspective(
-                    projection_visualization, H, (w, h),
-                    borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255),
+                spectator_visualization = warp_to_camera_calibration(
+                    spectator_visualization,
+                    calibration.camera_points,
+                    (0, 0, 0),
+                    calibrated_camera_output_size(calibration.camera_points),
+                )
+                projection_visualization = warp_to_camera_calibration(
+                    projection_visualization,
+                    calibration.camera_points,
+                    (255, 255, 255),
                 )
 
             snapshot = TrackerSnapshot(
@@ -1403,6 +1479,8 @@ def track_markers(
             last_visualization = frame.copy()
             if frame_callback is not None:
                 frame_callback(last_visualization, snapshot)
+            if spectator_frame_callback is not None:
+                spectator_frame_callback(spectator_visualization, snapshot)
             if projection_frame_callback is not None:
                 projection_frame_callback(projection_visualization, snapshot)
     except KeyboardInterrupt:
