@@ -41,6 +41,7 @@ from .tracker import (
     manual_draw_marker_id,
     manual_draw_tool,
     marker_color,
+    player_name,
     parse_args,
     track_markers,
     tool_label,
@@ -101,7 +102,11 @@ class VideoCanvas(QWidget):
         painter.fillRect(self.rect(), self._bg_color)
         if self._image is None:
             painter.setPen(QColor("#9fb0c0"))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "Waiting for camera frames...")
+            painter.drawText(
+                self.rect(),
+                Qt.AlignmentFlag.AlignCenter,
+                "Waiting for camera frames...",
+            )
             return
         target = QRectF(self.rect()) if self._stretch else self._target_rect()
         if target is None:
@@ -117,8 +122,12 @@ class VideoCanvas(QWidget):
             return None
         x_ratio = (point.x() - target.left()) / target.width()
         y_ratio = (point.y() - target.top()) / target.height()
-        image_x = max(0, min(self._image.width() - 1, int(round(x_ratio * self._image.width()))))
-        image_y = max(0, min(self._image.height() - 1, int(round(y_ratio * self._image.height()))))
+        image_x = max(
+            0, min(self._image.width() - 1, int(round(x_ratio * self._image.width())))
+        )
+        image_y = max(
+            0, min(self._image.height() - 1, int(round(y_ratio * self._image.height())))
+        )
         return image_x, image_y
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -177,12 +186,18 @@ class TerritoryBarWidget(QWidget):
 
         if self._snapshot is None or self._snapshot.total_area <= 0:
             painter.setPen(QColor("#b8c5d2"))
-            painter.drawText(panel_rect, Qt.AlignmentFlag.AlignCenter, "Waiting for territory data...")
+            painter.drawText(
+                panel_rect,
+                Qt.AlignmentFlag.AlignCenter,
+                "Waiting for territory data...",
+            )
             return
 
         scores = self._snapshot.scores
         total_area = self._snapshot.total_area
-        bar_rect = QRectF(panel_rect.left() + 14, panel_rect.top() + 32, panel_rect.width() - 28, 20)
+        bar_rect = QRectF(
+            panel_rect.left() + 14, panel_rect.top() + 32, panel_rect.width() - 28, 20
+        )
         painter.fillRect(bar_rect, QColor("#5f6670"))
 
         claimed_area = sum(max(0, score) for score in scores.values())
@@ -207,12 +222,22 @@ class TerritoryBarWidget(QWidget):
             width = bar_rect.width() * score / claimed_area
             if marker_id == right_marker_id:
                 next_left = max(left_cursor, right_cursor - width)
-                segment_rect = QRectF(next_left, bar_rect.top(), right_cursor - next_left, bar_rect.height())
+                segment_rect = QRectF(
+                    next_left,
+                    bar_rect.top(),
+                    right_cursor - next_left,
+                    bar_rect.height(),
+                )
                 painter.fillRect(segment_rect, self._player_color(marker_id))
                 right_cursor = next_left
             else:
                 next_right = min(right_cursor, left_cursor + width)
-                segment_rect = QRectF(left_cursor, bar_rect.top(), next_right - left_cursor, bar_rect.height())
+                segment_rect = QRectF(
+                    left_cursor,
+                    bar_rect.top(),
+                    next_right - left_cursor,
+                    bar_rect.height(),
+                )
                 painter.fillRect(segment_rect, self._player_color(marker_id))
                 left_cursor = next_right
 
@@ -227,15 +252,19 @@ class TerritoryBarWidget(QWidget):
             painter.drawText(
                 int(bar_rect.left()),
                 int(label_y),
-                f"P{first_id} {first_score / claimed_area * 100:.0f}%",
+                f"{player_name(first_id)} {first_score / claimed_area * 100:.0f}%",
             )
             last_id = next(reversed(scores))
             if last_id != first_id:
                 last_score = scores[last_id]
-                label = f"{last_score / claimed_area * 100:.0f}% P{last_id}"
+                label = f"{last_score / claimed_area * 100:.0f}% {player_name(last_id)}"
                 metrics = painter.fontMetrics()
                 painter.setPen(self._player_color(last_id))
-                painter.drawText(int(bar_rect.right() - metrics.horizontalAdvance(label)), int(label_y), label)
+                painter.drawText(
+                    int(bar_rect.right() - metrics.horizontalAdvance(label)),
+                    int(label_y),
+                    label,
+                )
 
 
 class TrackerWorker(QThread):
@@ -264,7 +293,9 @@ class TrackerWorker(QThread):
     def _publish_frame(self, frame: np.ndarray, snapshot: TrackerSnapshot) -> None:
         self.frame_ready.emit(frame.copy(), snapshot)
 
-    def _publish_spectator_frame(self, frame: np.ndarray, snapshot: TrackerSnapshot) -> None:
+    def _publish_spectator_frame(
+        self, frame: np.ndarray, snapshot: TrackerSnapshot
+    ) -> None:
         self.spectator_frame_ready.emit(frame.copy(), snapshot)
 
     def _publish_projection_frame(
@@ -337,11 +368,10 @@ class SpectatorWindow(QMainWindow):
         info_row.setSpacing(12)
         self._time_label = QLabel("00:00")
         self._time_label.setObjectName("projectorInfo")
-        info_row.addWidget(self._time_label, alignment=Qt.AlignmentFlag.AlignLeft)
+        self._time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info_row.addStretch(1)
-        self._mode_label = QLabel("Spectator")
-        self._mode_label.setObjectName("projectorInfo")
-        info_row.addWidget(self._mode_label, alignment=Qt.AlignmentFlag.AlignRight)
+        info_row.addWidget(self._time_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        info_row.addStretch(1)
         root_layout.addLayout(info_row)
 
         self._game_over_label = QLabel("GAME OVER")
@@ -378,7 +408,6 @@ class SpectatorWindow(QMainWindow):
             if snapshot.remaining_seconds is None
             else f"{int(snapshot.remaining_seconds) // 60:02d}:{int(snapshot.remaining_seconds) % 60:02d}"
         )
-        self._mode_label.setText("Spectator")
         winners = winning_marker_ids(snapshot.scores)
         self._winner_label.setText(winner_banner_text(snapshot.scores))
         if len(winners) == 1:
@@ -476,10 +505,14 @@ class MainWindow(QMainWindow):
         self._worker.frame_ready.connect(self._apply_frame_update)
         self._worker.failed.connect(self._show_worker_error)
         self._spectator_window = SpectatorWindow()
-        self._worker.spectator_frame_ready.connect(self._spectator_window.apply_frame_update)
+        self._worker.spectator_frame_ready.connect(
+            self._spectator_window.apply_frame_update
+        )
         self._spectator_window.closed.connect(self._on_spectator_closed)
         self._projector_window = ProjectorWindow()
-        self._worker.projection_frame_ready.connect(self._projector_window.apply_frame_update)
+        self._worker.projection_frame_ready.connect(
+            self._projector_window.apply_frame_update
+        )
         self._projector_window.closed.connect(self._on_projector_closed)
 
         self.setWindowTitle("AR Marker Tracker")
@@ -565,7 +598,9 @@ class MainWindow(QMainWindow):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setStyleSheet("QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }")
+        scroll_area.setStyleSheet(
+            "QScrollArea, QScrollArea > QWidget > QWidget { background: transparent; }"
+        )
         side_outer_layout.addWidget(scroll_area)
 
         scroll_content = QWidget()
@@ -585,10 +620,12 @@ class MainWindow(QMainWindow):
 
         self._draw_buttons: dict[int, QPushButton] = {}
         for marker_id in self._player_ids:
-            button = QPushButton(f"Manual Draw P{marker_id}")
+            button = QPushButton(f"Manual Draw {player_name(marker_id)}")
             button.setCheckable(True)
             button.toggled.connect(
-                lambda checked, marker_id=marker_id: self._on_draw_button_toggled(marker_id, checked)
+                lambda checked, marker_id=marker_id: self._on_draw_button_toggled(
+                    marker_id, checked
+                )
             )
             panel_layout.addWidget(button)
             self._draw_buttons[marker_id] = button
@@ -603,12 +640,16 @@ class MainWindow(QMainWindow):
 
         self._camera_calibration_button = QPushButton("Camera Calibration")
         self._camera_calibration_button.setCheckable(True)
-        self._camera_calibration_button.toggled.connect(self._on_camera_calibration_toggled)
+        self._camera_calibration_button.toggled.connect(
+            self._on_camera_calibration_toggled
+        )
         panel_layout.addWidget(self._camera_calibration_button)
 
         self._projector_calibration_button = QPushButton("Projector Calibration")
         self._projector_calibration_button.setCheckable(True)
-        self._projector_calibration_button.toggled.connect(self._on_projector_calibration_toggled)
+        self._projector_calibration_button.toggled.connect(
+            self._on_projector_calibration_toggled
+        )
         panel_layout.addWidget(self._projector_calibration_button)
 
         self._show_spectator_button = QPushButton("Show Spectator Window")
@@ -730,7 +771,10 @@ class MainWindow(QMainWindow):
         self._boost_label.setText(
             "None"
             if not snapshot.buff_remaining
-            else ", ".join(f"P{marker_id} {seconds_left:.1f}s" for marker_id, seconds_left in snapshot.buff_remaining.items())
+            else ", ".join(
+                f"{player_name(marker_id)} {seconds_left:.1f}s"
+                for marker_id, seconds_left in snapshot.buff_remaining.items()
+            )
         )
         calibration_mode = snapshot.calibration_mode or "None"
         self._calibration_label.setText(calibration_mode.title())
@@ -741,9 +785,13 @@ class MainWindow(QMainWindow):
             with QSignalBlocker(button):
                 button.setChecked(active_draw_marker == marker_id)
         with QSignalBlocker(self._camera_calibration_button):
-            self._camera_calibration_button.setChecked(snapshot.calibration_mode == CALIBRATION_CAMERA)
+            self._camera_calibration_button.setChecked(
+                snapshot.calibration_mode == CALIBRATION_CAMERA
+            )
         with QSignalBlocker(self._projector_calibration_button):
-            self._projector_calibration_button.setChecked(snapshot.calibration_mode == CALIBRATION_PROJECTOR)
+            self._projector_calibration_button.setChecked(
+                snapshot.calibration_mode == CALIBRATION_PROJECTOR
+            )
 
     def _show_worker_error(self, message: str) -> None:
         QMessageBox.critical(self, "Tracker Error", message)
