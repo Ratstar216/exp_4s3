@@ -674,9 +674,13 @@ def warp_to_camera_calibration(
     frame: np.ndarray,
     camera_points: list[tuple[int, int]],
     border_value: tuple[int, int, int],
+    output_size: tuple[int, int] | None = None,
 ) -> np.ndarray:
-    h, w = frame.shape[:2]
     src = np.array(order_quad_points(camera_points), dtype=np.float32)
+    if output_size is None:
+        h, w = frame.shape[:2]
+    else:
+        w, h = output_size
     dst = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
     transform = cv2.getPerspectiveTransform(src, dst)
     return cv2.warpPerspective(
@@ -685,6 +689,18 @@ def warp_to_camera_calibration(
         (w, h),
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=border_value,
+    )
+
+
+def calibrated_camera_output_size(camera_points: list[tuple[int, int]]) -> tuple[int, int]:
+    top_left, top_right, bottom_right, bottom_left = order_quad_points(camera_points)
+    top_width = math.hypot(top_right[0] - top_left[0], top_right[1] - top_left[1])
+    bottom_width = math.hypot(bottom_right[0] - bottom_left[0], bottom_right[1] - bottom_left[1])
+    right_height = math.hypot(bottom_right[0] - top_right[0], bottom_right[1] - top_right[1])
+    left_height = math.hypot(bottom_left[0] - top_left[0], bottom_left[1] - top_left[1])
+    return (
+        max(1, int(round(max(top_width, bottom_width)))),
+        max(1, int(round(max(right_height, left_height)))),
     )
 
 
@@ -1354,6 +1370,7 @@ def track_markers(
                     spectator_visualization,
                     calibration.camera_points,
                     (0, 0, 0),
+                    calibrated_camera_output_size(calibration.camera_points),
                 )
                 projection_visualization = warp_to_camera_calibration(
                     projection_visualization,
