@@ -30,7 +30,7 @@ MIN_LOOP_GAP = 8  # minimum old segments skipped when checking for self-intersec
 DEFAULT_OUTLINE_THICKNESS = 2
 DEFAULT_MARKER_RADIUS = 5
 DEFAULT_ARROW_THICKNESS = 2
-MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mushroom.png"
+MUSHROOM_SPRITE_PATH = Path(__file__).resolve().parent / "assets" / "mushroom_abstract.png"
 
 ARUCO_DICTIONARIES = {
     "4x4_50": cv2.aruco.DICT_4X4_50,
@@ -346,12 +346,6 @@ def marker_center(corners: np.ndarray) -> tuple[int, int]:
     return int(center[0]), int(center[1])
 
 
-def marker_heading_degrees(corners: np.ndarray) -> float:
-    top_left, top_right = corners.reshape(4, 2)[:2]
-    dx, dy = top_right - top_left
-    return math.degrees(math.atan2(float(dy), float(dx)))
-
-
 def marker_color(marker_id: int) -> tuple[int, int, int]:
     return DEFAULT_MARKER_COLORS[marker_id % len(DEFAULT_MARKER_COLORS)]
 
@@ -572,9 +566,9 @@ def load_item_sprite(path: Path) -> np.ndarray:
     sprite = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
     if sprite is None:
         raise RuntimeError(f"Failed to load support item sprite: {path}")
-    if sprite.ndim != 3 or sprite.shape[2] != 3:
+    if sprite.ndim != 3 or sprite.shape[2] not in (3, 4):
         raise RuntimeError(
-            f"Expected a 3-channel support item sprite image, got shape {sprite.shape!r}: {path}"
+            f"Expected a 3- or 4-channel support item sprite image, got shape {sprite.shape!r}: {path}"
         )
     return sprite
 
@@ -606,14 +600,27 @@ def draw_sprite(
     sprite_x1 = sprite_x0 + (frame_x1 - frame_x0)
     sprite_y1 = sprite_y0 + (frame_y1 - frame_y0)
     sprite_region = resized[sprite_y0:sprite_y1, sprite_x0:sprite_x1]
+    frame_region = frame[frame_y0:frame_y1, frame_x0:frame_x1]
 
-    # Treat the near-white background in the source PNG as transparent.
-    alpha_mask = np.any(sprite_region < 245, axis=2)
-    if not np.any(alpha_mask):
+    if sprite_region.shape[2] == 4:
+        sprite_bgr = sprite_region[:, :, :3]
+        alpha = sprite_region[:, :, 3]
+        alpha_mask = alpha > 0
+        if not np.any(alpha_mask):
+            return
+
+        alpha_fraction = alpha[alpha_mask, np.newaxis].astype(np.float32) / 255.0
+        blended = (
+            sprite_bgr[alpha_mask].astype(np.float32) * alpha_fraction
+            + frame_region[alpha_mask].astype(np.float32) * (1.0 - alpha_fraction)
+        )
+        frame_region[alpha_mask] = np.clip(blended, 0, 255).astype(np.uint8)
         return
 
-    frame_region = frame[frame_y0:frame_y1, frame_x0:frame_x1]
-    frame_region[alpha_mask] = sprite_region[alpha_mask]
+    # Treat the near-white background in older 3-channel source PNGs as transparent.
+    alpha_mask = np.any(sprite_region < 245, axis=2)
+    if np.any(alpha_mask):
+        frame_region[alpha_mask] = sprite_region[alpha_mask]
 
 
 def draw_support_items(
@@ -871,13 +878,11 @@ def draw_marker_details(
     frame: np.ndarray,
     corners: np.ndarray,
     marker_id: int,
-    fps: float,
     size_multiplier: float,
 ) -> None:
     center_x, center_y = marker_center(corners)
-    heading = marker_heading_degrees(corners)
     points = corners.reshape(4, 2).astype(int)
-    top_left, top_right, bottom_right, bottom_left = points
+    top_left, top_right = points[:2]
     color = marker_color(marker_id)
 
     outline_thickness = max(
@@ -901,19 +906,6 @@ def draw_marker_details(
         color,
         arrow_thickness,
         tipLength=0.25,
-    )
-
-    label = f"id={marker_id} x={center_x} y={center_y} heading={heading:.1f} fps={fps:.1f}"
-    text_origin = (int(bottom_left[0]), int(bottom_left[1]) + 24)
-    cv2.putText(
-        frame,
-        label,
-        text_origin,
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.55,
-        color,
-        2,
-        cv2.LINE_AA,
     )
 
 
@@ -1309,7 +1301,7 @@ def track_markers(
             )
             draw_support_items(frame, support_items, mushroom_sprite)
             for marker_corners, marker_id, size_multiplier in visible_markers:
-                draw_marker_details(frame, marker_corners, marker_id, fps, size_multiplier)
+                draw_marker_details(frame, marker_corners, marker_id, size_multiplier)
             draw_calibration_guides(frame, calibration)
 
             projection_visualization = np.full_like(frame, 255)
@@ -1332,7 +1324,6 @@ def track_markers(
                     projection_visualization,
                     marker_corners,
                     marker_id,
-                    fps,
                     size_multiplier,
                 )
             draw_calibration_guides(projection_visualization, calibration)
